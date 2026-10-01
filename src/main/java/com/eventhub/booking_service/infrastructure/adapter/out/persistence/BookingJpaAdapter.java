@@ -3,8 +3,8 @@ package com.eventhub.booking_service.infrastructure.adapter.out.persistence;
 import com.eventhub.booking_service.domain.model.Booking;
 import com.eventhub.booking_service.domain.model.Ticket;
 import com.eventhub.booking_service.domain.port.out.BookingRepositoryPort;
-import com.eventhub.booking_service.infrastructure.adapter.out.persistence.entity.BookingDocument;
-import com.eventhub.booking_service.infrastructure.adapter.out.persistence.entity.TicketDocument;
+import com.eventhub.booking_service.infrastructure.adapter.out.persistence.entity.BookingEntity;
+import com.eventhub.booking_service.infrastructure.adapter.out.persistence.entity.TicketEntity;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -14,20 +14,20 @@ import java.util.Optional;
 
 @Component
 @RequiredArgsConstructor
-public class BookingMongoAdapter implements BookingRepositoryPort {
+public class BookingJpaAdapter implements BookingRepositoryPort {
 
-    private final SpringDataMongoBookingRepository bookingRepository;
-    private final SpringDataMongoTicketRepository ticketRepository;
+    private final SpringDataJpaBookingRepository bookingRepository;
+    private final SpringDataJpaTicketRepository ticketRepository;
 
     @Override
     public Booking save(Booking booking) {
-        BookingDocument doc = mapToBookingDocument(booking);
-        if (doc.getCreatedAt() == null) {
-            doc.setCreatedAt(LocalDateTime.now());
+        BookingEntity entity = mapToBookingEntity(booking);
+        if (entity.getCreatedAt() == null) {
+            entity.setCreatedAt(LocalDateTime.now());
         }
-        doc.setUpdatedAt(LocalDateTime.now());
+        entity.setUpdatedAt(LocalDateTime.now());
 
-        BookingDocument saved = bookingRepository.save(doc);
+        BookingEntity saved = bookingRepository.save(entity);
         return mapToBookingDomain(saved);
     }
 
@@ -45,7 +45,7 @@ public class BookingMongoAdapter implements BookingRepositoryPort {
 
     @Override
     public Ticket saveTicket(Ticket ticket) {
-        TicketDocument doc = TicketDocument.builder()
+        TicketEntity entity = TicketEntity.builder()
                 .id(ticket.getId())
                 .bookingId(ticket.getBookingId())
                 .eventId(ticket.getEventId())
@@ -55,7 +55,7 @@ public class BookingMongoAdapter implements BookingRepositoryPort {
                 .issuedAt(ticket.getIssuedAt() != null ? ticket.getIssuedAt() : LocalDateTime.now())
                 .build();
 
-        TicketDocument saved = ticketRepository.save(doc);
+        TicketEntity saved = ticketRepository.save(entity);
         return mapToTicketDomain(saved);
     }
 
@@ -66,8 +66,8 @@ public class BookingMongoAdapter implements BookingRepositoryPort {
                 .toList();
     }
 
-    private BookingDocument mapToBookingDocument(Booking domain) {
-        return BookingDocument.builder()
+    private BookingEntity mapToBookingEntity(Booking domain) {
+        return BookingEntity.builder()
                 .id(domain.getId())
                 .eventId(domain.getEventId())
                 .ticketTierId(domain.getTicketTierId())
@@ -81,30 +81,30 @@ public class BookingMongoAdapter implements BookingRepositoryPort {
                 .build();
     }
 
-    private Booking mapToBookingDomain(BookingDocument doc) {
+    private Booking mapToBookingDomain(BookingEntity entity) {
         return Booking.builder()
-                .id(doc.getId())
-                .eventId(doc.getEventId())
-                .ticketTierId(doc.getTicketTierId())
-                .userId(doc.getUserId())
-                .quantity(doc.getQuantity())
-                .totalPrice(doc.getTotalPrice())
-                .status(doc.getStatus())
-                .expiresAt(doc.getExpiresAt())
-                .createdAt(doc.getCreatedAt())
-                .updatedAt(doc.getUpdatedAt())
+                .id(entity.getId())
+                .eventId(entity.getEventId())
+                .ticketTierId(entity.getTicketTierId())
+                .userId(entity.getUserId())
+                .quantity(entity.getQuantity())
+                .totalPrice(entity.getTotalPrice())
+                .status(entity.getStatus())
+                .expiresAt(entity.getExpiresAt())
+                .createdAt(entity.getCreatedAt())
+                .updatedAt(entity.getUpdatedAt())
                 .build();
     }
 
-    private Ticket mapToTicketDomain(TicketDocument doc) {
+    private Ticket mapToTicketDomain(TicketEntity entity) {
         return Ticket.builder()
-                .id(doc.getId())
-                .bookingId(doc.getBookingId())
-                .eventId(doc.getEventId())
-                .ticketTierId(doc.getTicketTierId())
-                .qrCodeHash(doc.getQrCodeHash())
-                .status(doc.getStatus())
-                .issuedAt(doc.getIssuedAt())
+                .id(entity.getId())
+                .bookingId(entity.getBookingId())
+                .eventId(entity.getEventId())
+                .ticketTierId(entity.getTicketTierId())
+                .qrCodeHash(entity.getQrCodeHash())
+                .status(entity.getStatus())
+                .issuedAt(entity.getIssuedAt())
                 .build();
     }
 }

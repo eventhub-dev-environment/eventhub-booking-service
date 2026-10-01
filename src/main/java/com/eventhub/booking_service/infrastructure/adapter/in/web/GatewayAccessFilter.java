@@ -25,7 +25,7 @@ public class GatewayAccessFilter extends OncePerRequestFilter {
         String path = request.getRequestURI();
 
         // Permitir Swagger UI local directo en el microservicio para desarrollo
-        if (path.contains("/swagger-ui") || path.contains("/v3/api-docs")) {
+        if (path.contains("/swagger-ui") || path.contains("/v3/api-docs") || path.contains("/actuator")) {
             filterChain.doFilter(request, response);
             return;
         }
