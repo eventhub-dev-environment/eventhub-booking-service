@@ -4,8 +4,10 @@ import com.eventhub.booking_service.domain.event.BookingCreatedEvent;
 import com.eventhub.booking_service.domain.model.Booking;
 import com.eventhub.booking_service.domain.model.BookingStatus;
 import com.eventhub.booking_service.domain.model.Ticket;
+import com.eventhub.booking_service.domain.model.TicketStatus;
 import com.eventhub.booking_service.domain.port.in.CreateBookingUseCase;
 import com.eventhub.booking_service.domain.port.in.GetBookingUseCase;
+import com.eventhub.booking_service.domain.port.in.ValidateTicketUseCase;
 import com.eventhub.booking_service.domain.port.out.BookingEventPublisherPort;
 import com.eventhub.booking_service.domain.port.out.BookingRepositoryPort;
 import lombok.RequiredArgsConstructor;
@@ -17,7 +19,7 @@ import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
-public class BookingService implements CreateBookingUseCase, GetBookingUseCase {
+public class BookingService implements CreateBookingUseCase, GetBookingUseCase, ValidateTicketUseCase {
 
     private final BookingRepositoryPort bookingRepositoryPort;
     private final BookingEventPublisherPort eventPublisherPort;
@@ -58,5 +60,27 @@ public class BookingService implements CreateBookingUseCase, GetBookingUseCase {
     @Override
     public List<Ticket> getTicketsByBookingId(String bookingId) {
         return bookingRepositoryPort.findTicketsByBookingId(bookingId);
+    }
+
+    @Override
+    public Ticket validateAndUseTicket(String ticketId, String qrCodeHash) {
+        Ticket ticket = bookingRepositoryPort.findTicketById(ticketId)
+                .orElseThrow(() -> new IllegalArgumentException("El ticket especificado no existe."));
+
+        if (!ticket.getQrCodeHash().equals(qrCodeHash)) {
+            throw new IllegalStateException("CÓDIGO QR INVÁLIDO O FALSIFICADO.");
+        }
+
+        if (ticket.getStatus() == TicketStatus.USED) {
+            throw new IllegalStateException("EL TICKET YA FUE UTILIZADO ANTERIORMENTE.");
+        }
+
+        if (ticket.getStatus() == TicketStatus.CANCELLED) {
+            throw new IllegalStateException("EL TICKET SE ENCUENTRA CANCELADO.");
+        }
+
+        // Marcar ticket como UTILIZADO
+        ticket.setStatus(TicketStatus.USED);
+        return bookingRepositoryPort.saveTicket(ticket);
     }
 }

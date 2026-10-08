@@ -12,4 +12,5 @@ public interface BookingRepositoryPort {
     List<Booking> findByUserId(String userId);
     Ticket saveTicket(Ticket ticket);
     List<Ticket> findTicketsByBookingId(String bookingId);
+    Optional<Ticket> findTicketById(String id);
 }

@@ -1,5 +1,6 @@
 package com.eventhub.booking_service.infrastructure.adapter.out.messaging;
 
+import com.eventhub.booking_service.domain.event.BookingConfirmedEvent;
 import com.eventhub.booking_service.domain.event.BookingCreatedEvent;
 import com.eventhub.booking_service.domain.port.out.BookingEventPublisherPort;
 import com.eventhub.booking_service.infrastructure.config.RabbitMQConfig;
@@ -21,6 +22,16 @@ public class RabbitMQBookingEventPublisher implements BookingEventPublisherPort 
         rabbitTemplate.convertAndSend(
                 RabbitMQConfig.BOOKING_EXCHANGE,
                 RabbitMQConfig.BOOKING_CREATED_KEY,
+                event
+        );
+    }
+
+    @Override
+    public void publishBookingConfirmed(BookingConfirmedEvent event) {
+        log.info("Publicando evento BookingConfirmedEvent para la reserva ID: {}", event.getBookingId());
+        rabbitTemplate.convertAndSend(
+                RabbitMQConfig.BOOKING_EXCHANGE,
+                RabbitMQConfig.BOOKING_CONFIRMED_KEY,
                 event
         );
     }

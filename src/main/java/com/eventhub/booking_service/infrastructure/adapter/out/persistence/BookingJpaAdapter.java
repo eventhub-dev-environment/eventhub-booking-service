@@ -66,6 +66,11 @@ public class BookingJpaAdapter implements BookingRepositoryPort {
                 .toList();
     }
 
+    @Override
+    public Optional<Ticket> findTicketById(String id) {
+        return ticketRepository.findById(id).map(this::mapToTicketDomain);
+    }
+
     private BookingEntity mapToBookingEntity(Booking domain) {
         return BookingEntity.builder()
                 .id(domain.getId())
