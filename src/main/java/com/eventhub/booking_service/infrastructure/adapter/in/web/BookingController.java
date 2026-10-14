@@ -4,6 +4,7 @@ import com.eventhub.booking_service.domain.model.Booking;
 import com.eventhub.booking_service.domain.model.Ticket;
 import com.eventhub.booking_service.domain.port.in.CreateBookingUseCase;
 import com.eventhub.booking_service.domain.port.in.GetBookingUseCase;
+import com.eventhub.booking_service.domain.port.in.ValidateTicketUseCase;
 import com.eventhub.booking_service.infrastructure.adapter.in.web.dto.ApiResponse;
 import com.eventhub.booking_service.infrastructure.adapter.in.web.dto.CreateBookingRequest;
 import jakarta.validation.Valid;
@@ -21,6 +22,7 @@ public class BookingController {
 
     private final CreateBookingUseCase createBookingUseCase;
     private final GetBookingUseCase getBookingUseCase;
+    private final ValidateTicketUseCase validateTicketUseCase; // Inyectado correctamente
 
     @PostMapping
     public ResponseEntity<ApiResponse<Booking>> createBooking(@Valid @RequestBody CreateBookingRequest request) {
@@ -55,5 +57,14 @@ public class BookingController {
     public ResponseEntity<ApiResponse<List<Ticket>>> getTicketsByBookingId(@PathVariable String id) {
         List<Ticket> tickets = getBookingUseCase.getTicketsByBookingId(id);
         return ResponseEntity.ok(ApiResponse.success(tickets, "Tickets de la reserva recuperados exitosamente"));
+    }
+
+    @PostMapping("/tickets/validate")
+    public ResponseEntity<ApiResponse<Ticket>> validateTicket(
+            @RequestParam String ticketId,
+            @RequestParam String qrCodeHash) {
+
+        Ticket validatedTicket = validateTicketUseCase.validateAndUseTicket(ticketId, qrCodeHash);
+        return ResponseEntity.ok(ApiResponse.success(validatedTicket, "ACCESO CONCEDIDO: Ticket válido y marcado como USADO."));
     }
 }

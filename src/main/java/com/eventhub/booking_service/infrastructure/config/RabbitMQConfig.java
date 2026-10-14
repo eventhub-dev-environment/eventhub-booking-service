@@ -20,6 +20,9 @@ public class RabbitMQConfig {
     public static final String BOOKING_CANCELLED_KEY = "booking.cancelled";
     public static final String PAYMENT_COMPLETED_KEY = "payment.completed";
 
+    public static final String BOOKING_CONFIRMED_QUEUE = "booking.confirmed.queue";
+    public static final String BOOKING_CONFIRMED_KEY = "booking.confirmed";
+
     @Bean
     public TopicExchange bookingExchange() {
         return new TopicExchange(BOOKING_EXCHANGE);
@@ -58,6 +61,16 @@ public class RabbitMQConfig {
     @Bean
     public Binding paymentCompletedBinding(Queue paymentCompletedQueue, TopicExchange paymentExchange) {
         return BindingBuilder.bind(paymentCompletedQueue).to(paymentExchange).with(PAYMENT_COMPLETED_KEY);
+    }
+
+    @Bean
+    public Queue bookingConfirmedQueue() {
+        return QueueBuilder.durable(BOOKING_CONFIRMED_QUEUE).build();
+    }
+
+    @Bean
+    public Binding bookingConfirmedBinding(Queue bookingConfirmedQueue, TopicExchange bookingExchange) {
+        return BindingBuilder.bind(bookingConfirmedQueue).to(bookingExchange).with(BOOKING_CONFIRMED_KEY);
     }
 
     // Usar la nueva clase no deprecada JacksonJsonMessageConverter
