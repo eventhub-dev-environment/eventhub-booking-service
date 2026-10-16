@@ -17,6 +17,7 @@ public class Booking {
     private String eventId;
     private String ticketTierId;
     private String userId;
+    private String userEmail;
     private Integer quantity;
     private BigDecimal totalPrice;
     private BookingStatus status;

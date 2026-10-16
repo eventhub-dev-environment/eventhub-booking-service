@@ -32,8 +32,9 @@ class BookingControllerTest {
         request.setQuantity(2);
         request.setTotalPrice(new BigDecimal("20.00"));
 
-        controller.createBooking(request, "signed-user-id");
+        controller.createBooking(request, "signed-user-id", "buyer@example.com");
 
         assertThat(submittedBooking.get().getUserId()).isEqualTo("signed-user-id");
+        assertThat(submittedBooking.get().getUserEmail()).isEqualTo("buyer@example.com");
     }
 }

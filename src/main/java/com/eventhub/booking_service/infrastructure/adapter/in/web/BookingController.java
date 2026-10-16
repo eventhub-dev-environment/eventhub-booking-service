@@ -27,11 +27,13 @@ public class BookingController {
     @PostMapping
     public ResponseEntity<ApiResponse<Booking>> createBooking(
             @Valid @RequestBody CreateBookingRequest request,
-            @RequestHeader("X-User-Id") String userId) {
+            @RequestHeader("X-User-Id") String userId,
+            @RequestHeader("X-User-Email") String userEmail) {
         Booking booking = Booking.builder()
                 .eventId(request.getEventId())
                 .ticketTierId(request.getTicketTierId())
                 .userId(userId)
+                .userEmail(userEmail)
                 .quantity(request.getQuantity())
                 .totalPrice(request.getTotalPrice())
                 .build();

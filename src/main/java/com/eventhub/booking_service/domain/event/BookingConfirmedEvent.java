@@ -1,5 +1,6 @@
 package com.eventhub.booking_service.domain.event;
 
+import java.math.BigDecimal;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -15,6 +16,9 @@ public class BookingConfirmedEvent {
     private String bookingId;
     private String eventId;
     private String userId;
+    private String userEmail;
+    private String transactionId;
+    private BigDecimal totalPrice;
     private List<TicketDto> tickets;
 
     @Data

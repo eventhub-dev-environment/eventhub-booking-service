@@ -68,6 +68,9 @@ public class PaymentEventListener {
                         .bookingId(booking.getId())
                         .eventId(booking.getEventId())
                         .userId(booking.getUserId())
+                        .userEmail(booking.getUserEmail())
+                        .transactionId(transactionId)
+                        .totalPrice(booking.getTotalPrice())
                         .tickets(ticketDtos)
                         .build();
 
