@@ -25,11 +25,13 @@ public class BookingController {
     private final ValidateTicketUseCase validateTicketUseCase; // Inyectado correctamente
 
     @PostMapping
-    public ResponseEntity<ApiResponse<Booking>> createBooking(@Valid @RequestBody CreateBookingRequest request) {
+    public ResponseEntity<ApiResponse<Booking>> createBooking(
+            @Valid @RequestBody CreateBookingRequest request,
+            @RequestHeader("X-User-Id") String userId) {
         Booking booking = Booking.builder()
                 .eventId(request.getEventId())
                 .ticketTierId(request.getTicketTierId())
-                .userId(request.getUserId())
+                .userId(userId)
                 .quantity(request.getQuantity())
                 .totalPrice(request.getTotalPrice())
                 .build();
