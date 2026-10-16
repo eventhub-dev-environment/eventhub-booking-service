@@ -29,6 +29,8 @@ public class BookingEntity {
     @Column(nullable = false)
     private String userId;
 
+    private String userEmail;
+
     @Column(nullable = false)
     private Integer quantity;
 
