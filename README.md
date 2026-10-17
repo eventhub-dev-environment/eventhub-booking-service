@@ -22,6 +22,10 @@ Customers can request a full refund for an unused, confirmed booking until 24 ho
 
 Booking creation still has no client idempotency key. Payments that arrive after expiry or have an unexpected amount/currency remain in manual review and are not automatically refunded.
 
+## JSON compatibility
+
+Booking Service and Payment Service retain the Jackson 2 APIs used by their DTO annotations, webhook handling, and outbox serialization. Both use Spring Boot's Jackson 2 compatibility module and select it for HTTP converters with `spring.http.converters.preferred-json-mapper: jackson2`. Migrate those integrations to Jackson 3 before removing the compatibility module.
+
 ## Database migrations
 
 Booking Service and Payment Service use Flyway migrations under `src/main/resources/db/migration`; Hibernate runs with `ddl-auto: validate` and does not change the schema. V1 describes the initial service tables currently present in Neon; V2 adds the columns, inventory, outbox, inbox, webhook receipt, indexes, and constraints required by the current entities. V2 checks for and adds missing primary keys on the initial tables. The Auth Service owns the separate `users` table and is not migrated by these services.
