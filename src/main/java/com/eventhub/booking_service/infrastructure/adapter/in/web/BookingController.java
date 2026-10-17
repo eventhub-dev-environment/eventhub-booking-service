@@ -1,6 +1,7 @@
 package com.eventhub.booking_service.infrastructure.adapter.in.web;
 
 import com.eventhub.booking_service.domain.model.Booking;
+import com.eventhub.booking_service.domain.model.BookingInventoryDefinition;
 import com.eventhub.booking_service.domain.model.Ticket;
 import com.eventhub.booking_service.domain.port.in.CreateBookingUseCase;
 import com.eventhub.booking_service.domain.port.in.GetBookingUseCase;
@@ -15,6 +16,8 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Arrays;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -40,18 +43,29 @@ public class BookingController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Se requiere el rol CUSTOMER");
         }
         validateAttendeeData(request.getAttendeeData(), request.getQuantity());
+        BookingInventoryDefinition inventoryDefinition = eventTenantLookup.findBookingInventory(
+                request.getEventId(), request.getSessionId(), request.getTicketTierId());
+        BigDecimal expectedTotal = inventoryDefinition.unitPrice()
+                .multiply(BigDecimal.valueOf(request.getQuantity()))
+                .setScale(2, RoundingMode.HALF_UP);
+        if (request.getTotalPrice().compareTo(expectedTotal) != 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "El precio de la tarifa cambió; actualice la reserva e inténtelo de nuevo");
+        }
         Booking booking = Booking.builder()
                 .eventId(request.getEventId())
-                .sessionId(request.getSessionId())
+                .sessionId(inventoryDefinition.sessionId())
                 .ticketTierId(request.getTicketTierId())
                 .userId(userId)
                 .userEmail(userEmail)
                 .quantity(request.getQuantity())
+                .seatIds(request.getSeatIds())
                 .attendeeData(request.getAttendeeData())
-                .totalPrice(request.getTotalPrice())
+                .totalPrice(expectedTotal)
                 .build();
 
-        Booking created = createBookingUseCase.createBooking(booking);
+        Booking created = createBookingUseCase.createBooking(booking, inventoryDefinition);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(created, "Reserva creada exitosamente. Dispone de 10 minutos para realizar el pago."));
     }

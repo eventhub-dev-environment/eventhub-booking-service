@@ -36,6 +36,8 @@ class BookingJpaAdapterTest {
                 .quantity(1)
                 .totalPrice(new BigDecimal("42.50"))
                 .status(BookingStatus.PENDING_PAYMENT)
+                .paymentTransactionId("transaction-123")
+                .inventoryHeld(true)
                 .build();
         when(bookingRepository.save(any(BookingEntity.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
@@ -44,6 +46,8 @@ class BookingJpaAdapterTest {
 
         assertThat(savedBooking.getUserEmail()).isEqualTo("buyer@example.com");
         assertThat(savedBooking.getSessionId()).isEqualTo("session-123");
+        assertThat(savedBooking.getPaymentTransactionId()).isEqualTo("transaction-123");
+        assertThat(savedBooking.getInventoryHeld()).isTrue();
         assertThat(savedBooking.getSeatIds()).containsExactly("seat-1");
         assertThat(savedBooking.getAttendeeData()).containsExactly(Map.of("shirtSize", "M"));
 

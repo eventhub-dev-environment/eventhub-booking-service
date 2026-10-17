@@ -27,6 +27,8 @@ public class Booking {
     private BigDecimal totalPrice;
     private BookingStatus status;
     private LocalDateTime expiresAt;
+    private String paymentTransactionId;
+    private Boolean inventoryHeld;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

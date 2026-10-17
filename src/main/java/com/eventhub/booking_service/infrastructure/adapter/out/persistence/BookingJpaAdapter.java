@@ -1,6 +1,7 @@
 package com.eventhub.booking_service.infrastructure.adapter.out.persistence;
 
 import com.eventhub.booking_service.domain.model.Booking;
+import com.eventhub.booking_service.domain.model.BookingStatus;
 import com.eventhub.booking_service.domain.model.Ticket;
 import com.eventhub.booking_service.domain.port.out.BookingRepositoryPort;
 import com.eventhub.booking_service.infrastructure.adapter.out.persistence.entity.BookingEntity;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.PageRequest;
 
 @Component
 @RequiredArgsConstructor
@@ -34,6 +36,19 @@ public class BookingJpaAdapter implements BookingRepositoryPort {
     @Override
     public Optional<Booking> findById(String id) {
         return bookingRepository.findById(id).map(this::mapToBookingDomain);
+    }
+
+    @Override
+    public Optional<Booking> findByIdForUpdate(String id) {
+        return bookingRepository.findByIdForUpdate(id).map(this::mapToBookingDomain);
+    }
+
+    @Override
+    public List<String> findExpiredPendingBookingIds(LocalDateTime now, int limit) {
+        return bookingRepository.findExpiredBookingIds(
+                BookingStatus.PENDING_PAYMENT,
+                now,
+                PageRequest.of(0, limit));
     }
 
     @Override
@@ -86,6 +101,8 @@ public class BookingJpaAdapter implements BookingRepositoryPort {
                 .totalPrice(domain.getTotalPrice())
                 .status(domain.getStatus())
                 .expiresAt(domain.getExpiresAt())
+                .paymentTransactionId(domain.getPaymentTransactionId())
+                .inventoryHeld(domain.getInventoryHeld())
                 .seatIds(domain.getSeatIds() == null ? List.of() : domain.getSeatIds())
                 .createdAt(domain.getCreatedAt())
                 .updatedAt(domain.getUpdatedAt())
@@ -105,6 +122,8 @@ public class BookingJpaAdapter implements BookingRepositoryPort {
                 .totalPrice(entity.getTotalPrice())
                 .status(entity.getStatus())
                 .expiresAt(entity.getExpiresAt())
+                .paymentTransactionId(entity.getPaymentTransactionId())
+                .inventoryHeld(entity.getInventoryHeld())
                 .seatIds(entity.getSeatIds() == null ? List.of() : entity.getSeatIds())
                 .createdAt(entity.getCreatedAt())
                 .updatedAt(entity.getUpdatedAt())

@@ -1,6 +1,8 @@
 package com.eventhub.booking_service.infrastructure.adapter.in.web;
 
 import com.eventhub.booking_service.domain.model.Booking;
+import com.eventhub.booking_service.domain.model.BookingInventoryDefinition;
+import com.eventhub.booking_service.domain.model.InventoryMode;
 import com.eventhub.booking_service.domain.model.Ticket;
 import com.eventhub.booking_service.domain.port.in.CreateBookingUseCase;
 import com.eventhub.booking_service.domain.port.in.GetBookingUseCase;
@@ -28,15 +30,20 @@ class BookingControllerTest {
     @Test
     void createsBookingUsingUserIdFromGatewayHeader() {
         AtomicReference<Booking> submittedBooking = new AtomicReference<>();
-        CreateBookingUseCase createBookingUseCase = booking -> {
+        CreateBookingUseCase createBookingUseCase = (booking, definition) -> {
             submittedBooking.set(booking);
             return booking;
         };
+        EventTenantLookup eventTenantLookup = mock(EventTenantLookup.class);
+        when(eventTenantLookup.findBookingInventory("event-123", "session-123", "tier-123"))
+                .thenReturn(new BookingInventoryDefinition(
+                        "event-123", "session-123", "tier-123", new BigDecimal("10.00"),
+                        InventoryMode.GENERAL_ADMISSION, 100, List.of()));
         BookingController controller = new BookingController(
                 createBookingUseCase,
                 mock(GetBookingUseCase.class),
                 mock(ValidateTicketUseCase.class),
-                mock(EventTenantLookup.class));
+                eventTenantLookup);
         CreateBookingRequest request = new CreateBookingRequest();
         request.setEventId("event-123");
         request.setSessionId("session-123");
@@ -111,6 +118,34 @@ class BookingControllerTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(exception -> ((ResponseStatusException) exception).getStatusCode())
                 .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void rejectsClientPriceThatDoesNotMatchPublishedTierPrice() {
+        EventTenantLookup eventTenantLookup = mock(EventTenantLookup.class);
+        when(eventTenantLookup.findBookingInventory("event-123", null, "tier-123"))
+                .thenReturn(new BookingInventoryDefinition(
+                        "event-123", "event-123", "tier-123", new BigDecimal("10.00"),
+                        InventoryMode.GENERAL_ADMISSION, 100, List.of()));
+        CreateBookingUseCase createBookingUseCase = mock(CreateBookingUseCase.class);
+        BookingController controller = new BookingController(
+                createBookingUseCase,
+                mock(GetBookingUseCase.class),
+                mock(ValidateTicketUseCase.class),
+                eventTenantLookup);
+        CreateBookingRequest request = new CreateBookingRequest();
+        request.setEventId("event-123");
+        request.setTicketTierId("tier-123");
+        request.setQuantity(1);
+        request.setTotalPrice(new BigDecimal("0.01"));
+
+        assertThatThrownBy(() -> controller.createBooking(
+                request, "user-123", "buyer@example.com", "CUSTOMER"))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(exception -> ((ResponseStatusException) exception).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+        verify(createBookingUseCase, never()).createBooking(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test

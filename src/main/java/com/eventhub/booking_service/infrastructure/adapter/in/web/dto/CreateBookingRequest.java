@@ -20,6 +20,8 @@ public class CreateBookingRequest {
     @NotBlank(message = "El ticketTierId es obligatorio")
     private String ticketTierId;
 
+    private List<String> seatIds;
+
     @NotNull(message = "La cantidad es obligatoria")
     @Min(value = 1, message = "Debe reservar al menos 1 entrada")
     private Integer quantity;

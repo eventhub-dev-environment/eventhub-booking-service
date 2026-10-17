@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 @Entity
-@Table(name = "bookings")
+@Table(name = "bookings", indexes = @Index(name = "idx_booking_pending_expiry", columnList = "status, expires_at"))
 @Getter
 @Setter
 @Builder
@@ -47,6 +47,8 @@ public class BookingEntity {
     private BookingStatus status;
 
     private LocalDateTime expiresAt;
+    private String paymentTransactionId;
+    private Boolean inventoryHeld;
 
     @Column(nullable = false)
     private LocalDateTime createdAt;
