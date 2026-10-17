@@ -4,15 +4,20 @@ import com.eventhub.booking_service.domain.model.Booking;
 import com.eventhub.booking_service.domain.model.BookingStatus;
 import com.eventhub.booking_service.domain.model.Ticket;
 import com.eventhub.booking_service.domain.port.out.BookingRepositoryPort;
+import com.eventhub.booking_service.infrastructure.adapter.out.persistence.entity.BookingAttendeeDataField;
 import com.eventhub.booking_service.infrastructure.adapter.out.persistence.entity.BookingEntity;
 import com.eventhub.booking_service.infrastructure.adapter.out.persistence.entity.TicketEntity;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
-import org.springframework.data.domain.PageRequest;
+import java.util.TreeMap;
 
 @Component
 @RequiredArgsConstructor
@@ -97,7 +102,7 @@ public class BookingJpaAdapter implements BookingRepositoryPort {
                 .userId(domain.getUserId())
                 .userEmail(domain.getUserEmail())
                 .quantity(domain.getQuantity())
-                .attendeeData(domain.getAttendeeData() == null ? List.of() : domain.getAttendeeData())
+                .attendeeData(mapAttendeeDataToEntity(domain.getAttendeeData()))
                 .totalPrice(domain.getTotalPrice())
                 .status(domain.getStatus())
                 .expiresAt(domain.getExpiresAt())
@@ -118,7 +123,7 @@ public class BookingJpaAdapter implements BookingRepositoryPort {
                 .userId(entity.getUserId())
                 .userEmail(entity.getUserEmail())
                 .quantity(entity.getQuantity())
-                .attendeeData(entity.getAttendeeData() == null ? List.of() : entity.getAttendeeData())
+                .attendeeData(mapAttendeeDataToDomain(entity.getAttendeeData()))
                 .totalPrice(entity.getTotalPrice())
                 .status(entity.getStatus())
                 .expiresAt(entity.getExpiresAt())
@@ -128,6 +133,60 @@ public class BookingJpaAdapter implements BookingRepositoryPort {
                 .createdAt(entity.getCreatedAt())
                 .updatedAt(entity.getUpdatedAt())
                 .build();
+    }
+
+    private List<BookingAttendeeDataField> mapAttendeeDataToEntity(
+            List<Map<String, String>> attendeeData) {
+        if (attendeeData == null || attendeeData.isEmpty()) {
+            return List.of();
+        }
+
+        List<BookingAttendeeDataField> fields = new ArrayList<>();
+        for (int attendeeIndex = 0; attendeeIndex < attendeeData.size(); attendeeIndex++) {
+            int index = attendeeIndex;
+            Map<String, String> attendeeFields = attendeeData.get(index);
+            if (attendeeFields == null) {
+                throw new IllegalArgumentException("Attendee data cannot contain null entries");
+            }
+            if (attendeeFields.isEmpty()) {
+                // Blank keys are rejected at the API boundary, so this marker preserves empty maps.
+                fields.add(BookingAttendeeDataField.builder()
+                        .attendeeIndex(index)
+                        .fieldKey("")
+                        .build());
+                continue;
+            }
+            for (Map.Entry<String, String> attendeeField : attendeeFields.entrySet()) {
+                String key = attendeeField.getKey();
+                String value = attendeeField.getValue();
+                if (key == null || key.isBlank() || value == null) {
+                    throw new IllegalArgumentException("Attendee data contains an invalid field");
+                }
+                fields.add(BookingAttendeeDataField.builder()
+                        .attendeeIndex(index)
+                        .fieldKey(key)
+                        .fieldValue(value)
+                        .build());
+            }
+        }
+        return fields;
+    }
+
+    private List<Map<String, String>> mapAttendeeDataToDomain(
+            List<BookingAttendeeDataField> fields) {
+        if (fields == null || fields.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Integer, Map<String, String>> attendeeData = new TreeMap<>();
+        for (BookingAttendeeDataField field : fields) {
+            Map<String, String> attendeeFields = attendeeData.computeIfAbsent(
+                    field.getAttendeeIndex(), ignored -> new LinkedHashMap<>());
+            if (field.getFieldKey() != null && !field.getFieldKey().isEmpty()) {
+                attendeeFields.put(field.getFieldKey(), field.getFieldValue());
+            }
+        }
+        return new ArrayList<>(attendeeData.values());
     }
 
     private Ticket mapToTicketDomain(TicketEntity entity) {

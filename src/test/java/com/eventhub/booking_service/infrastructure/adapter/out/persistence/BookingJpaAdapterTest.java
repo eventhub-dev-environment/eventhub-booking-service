@@ -4,6 +4,7 @@ import com.eventhub.booking_service.domain.model.Booking;
 import com.eventhub.booking_service.domain.model.BookingStatus;
 import com.eventhub.booking_service.domain.model.Ticket;
 import com.eventhub.booking_service.infrastructure.adapter.out.persistence.entity.BookingEntity;
+import com.eventhub.booking_service.infrastructure.adapter.out.persistence.entity.BookingAttendeeDataField;
 import com.eventhub.booking_service.infrastructure.adapter.out.persistence.entity.TicketEntity;
 import org.junit.jupiter.api.Test;
 
@@ -20,17 +21,18 @@ import static org.mockito.Mockito.when;
 class BookingJpaAdapterTest {
 
     @Test
-    void preservesUserEmailWhenSavingAndLoadingBooking() {
+    void preservesBookingDetailsAndAttendeeDataWhenSavingAndLoading() {
         SpringDataJpaBookingRepository bookingRepository = mock(SpringDataJpaBookingRepository.class);
         SpringDataJpaTicketRepository ticketRepository = mock(SpringDataJpaTicketRepository.class);
         BookingJpaAdapter adapter = new BookingJpaAdapter(bookingRepository, ticketRepository);
+        List<Map<String, String>> attendeeData = List.of(Map.of("shirtSize", "M"), Map.of());
         Booking booking = Booking.builder()
                 .id("booking-123")
                 .eventId("event-123")
                 .sessionId("session-123")
                 .ticketTierId("tier-123")
                 .seatIds(List.of("seat-1"))
-                .attendeeData(List.of(Map.of("shirtSize", "M")))
+                .attendeeData(attendeeData)
                 .userId("user-123")
                 .userEmail("buyer@example.com")
                 .quantity(1)
@@ -49,7 +51,7 @@ class BookingJpaAdapterTest {
         assertThat(savedBooking.getPaymentTransactionId()).isEqualTo("transaction-123");
         assertThat(savedBooking.getInventoryHeld()).isTrue();
         assertThat(savedBooking.getSeatIds()).containsExactly("seat-1");
-        assertThat(savedBooking.getAttendeeData()).containsExactly(Map.of("shirtSize", "M"));
+        assertThat(savedBooking.getAttendeeData()).containsExactlyElementsOf(attendeeData);
 
         when(bookingRepository.findById("booking-123")).thenReturn(Optional.of(
                 BookingEntity.builder()
@@ -58,7 +60,16 @@ class BookingJpaAdapterTest {
                         .sessionId("session-123")
                         .ticketTierId("tier-123")
                         .seatIds(List.of("seat-1"))
-                        .attendeeData(List.of(Map.of("shirtSize", "M")))
+                        .attendeeData(List.of(
+                                BookingAttendeeDataField.builder()
+                                        .attendeeIndex(0)
+                                        .fieldKey("shirtSize")
+                                        .fieldValue("M")
+                                        .build(),
+                                BookingAttendeeDataField.builder()
+                                        .attendeeIndex(1)
+                                        .fieldKey("")
+                                        .build()))
                         .userId("user-123")
                         .userEmail("buyer@example.com")
                         .quantity(1)
@@ -80,7 +91,7 @@ class BookingJpaAdapterTest {
                 .get()
                 .extracting(Booking::getAttendeeData)
                 .asList()
-                .containsExactly(Map.of("shirtSize", "M"));
+                .containsExactlyElementsOf(attendeeData);
 
         when(ticketRepository.save(any(TicketEntity.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));

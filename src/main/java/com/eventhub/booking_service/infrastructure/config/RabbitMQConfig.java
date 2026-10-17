@@ -15,10 +15,12 @@ public class RabbitMQConfig {
     public static final String BOOKING_CREATED_QUEUE = "booking.created.queue";
     public static final String BOOKING_CANCELLED_QUEUE = "booking.cancelled.queue";
     public static final String PAYMENT_COMPLETED_QUEUE = "payment.completed.queue";
+    public static final String PAYMENT_FAILED_QUEUE = "payment.failed.queue";
 
     public static final String BOOKING_CREATED_KEY = "booking.created";
     public static final String BOOKING_CANCELLED_KEY = "booking.cancelled";
     public static final String PAYMENT_COMPLETED_KEY = "payment.completed";
+    public static final String PAYMENT_FAILED_KEY = "payment.failed";
 
     public static final String BOOKING_CONFIRMED_QUEUE = "booking.confirmed.queue";
     public static final String BOOKING_CONFIRMED_KEY = "booking.confirmed";
@@ -49,6 +51,11 @@ public class RabbitMQConfig {
     }
 
     @Bean
+    public Queue paymentFailedQueue() {
+        return QueueBuilder.durable(PAYMENT_FAILED_QUEUE).build();
+    }
+
+    @Bean
     public Binding bookingCreatedBinding(Queue bookingCreatedQueue, TopicExchange bookingExchange) {
         return BindingBuilder.bind(bookingCreatedQueue).to(bookingExchange).with(BOOKING_CREATED_KEY);
     }
@@ -61,6 +68,11 @@ public class RabbitMQConfig {
     @Bean
     public Binding paymentCompletedBinding(Queue paymentCompletedQueue, TopicExchange paymentExchange) {
         return BindingBuilder.bind(paymentCompletedQueue).to(paymentExchange).with(PAYMENT_COMPLETED_KEY);
+    }
+
+    @Bean
+    public Binding paymentFailedBinding(Queue paymentFailedQueue, TopicExchange paymentExchange) {
+        return BindingBuilder.bind(paymentFailedQueue).to(paymentExchange).with(PAYMENT_FAILED_KEY);
     }
 
     @Bean

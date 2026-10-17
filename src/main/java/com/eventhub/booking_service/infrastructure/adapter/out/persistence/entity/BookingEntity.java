@@ -8,7 +8,6 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 @Entity
 @Table(name = "bookings", indexes = @Index(name = "idx_booking_pending_expiry", columnList = "status, expires_at"))
@@ -60,11 +59,8 @@ public class BookingEntity {
             name = "booking_attendee_data",
             joinColumns = @JoinColumn(name = "booking_id"),
             uniqueConstraints = @UniqueConstraint(columnNames = {"booking_id", "attendee_index", "field_key"}))
-    @OrderColumn(name = "attendee_index")
-    @MapKeyColumn(name = "field_key", nullable = false)
-    @Column(name = "field_value")
     @Builder.Default
-    private List<Map<String, String>> attendeeData = new ArrayList<>();
+    private List<BookingAttendeeDataField> attendeeData = new ArrayList<>();
 
     @ElementCollection
     @CollectionTable(
