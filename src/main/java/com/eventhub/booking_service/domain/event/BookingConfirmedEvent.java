@@ -15,6 +15,7 @@ import java.util.List;
 public class BookingConfirmedEvent {
     private String bookingId;
     private String eventId;
+    private String sessionId;
     private String userId;
     private String userEmail;
     private String transactionId;
@@ -29,5 +30,6 @@ public class BookingConfirmedEvent {
         private String ticketId;
         private String qrCodeHash;
         private String ticketTierId;
+        private String seatId;
     }
 }

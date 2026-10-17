@@ -15,7 +15,9 @@ public class Ticket {
     private String id;
     private String bookingId;
     private String eventId;
+    private String sessionId;
     private String ticketTierId;
+    private String seatId;
     private String qrCodeHash;
     private TicketStatus status;
     private LocalDateTime issuedAt;
