@@ -25,4 +25,6 @@ public interface SpringDataJpaBookingOutboxRepository
     List<BookingOutboxEventEntity> findByStatusForUpdate(
             @Param("status") BookingOutboxStatus status,
             Pageable pageable);
+
+    long countByStatus(BookingOutboxStatus status);
 }
