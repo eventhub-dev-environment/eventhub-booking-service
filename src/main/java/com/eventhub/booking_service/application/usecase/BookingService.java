@@ -63,6 +63,11 @@ public class BookingService implements CreateBookingUseCase, GetBookingUseCase, 
     }
 
     @Override
+    public Optional<Ticket> getTicketById(String ticketId) {
+        return bookingRepositoryPort.findTicketById(ticketId);
+    }
+
+    @Override
     public Ticket validateAndUseTicket(String ticketId, String qrCodeHash) {
         Ticket ticket = bookingRepositoryPort.findTicketById(ticketId)
                 .orElseThrow(() -> new IllegalArgumentException("El ticket especificado no existe."));

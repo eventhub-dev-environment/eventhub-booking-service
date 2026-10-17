@@ -12,8 +12,12 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Arrays;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1/bookings")
@@ -22,13 +26,18 @@ public class BookingController {
 
     private final CreateBookingUseCase createBookingUseCase;
     private final GetBookingUseCase getBookingUseCase;
-    private final ValidateTicketUseCase validateTicketUseCase; // Inyectado correctamente
+    private final ValidateTicketUseCase validateTicketUseCase;
+    private final EventTenantLookup eventTenantLookup;
 
     @PostMapping
     public ResponseEntity<ApiResponse<Booking>> createBooking(
             @Valid @RequestBody CreateBookingRequest request,
             @RequestHeader("X-User-Id") String userId,
-            @RequestHeader("X-User-Email") String userEmail) {
+            @RequestHeader("X-User-Email") String userEmail,
+            @RequestHeader("X-User-Roles") String userRoles) {
+        if (!parseRoles(userRoles).contains("CUSTOMER")) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Se requiere el rol CUSTOMER");
+        }
         Booking booking = Booking.builder()
                 .eventId(request.getEventId())
                 .ticketTierId(request.getTicketTierId())
@@ -44,21 +53,37 @@ public class BookingController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<Booking>> getById(@PathVariable String id) {
-        return getBookingUseCase.getById(id)
-                .map(booking -> ResponseEntity.ok(ApiResponse.success(booking, "Reserva encontrada")))
-                .orElse(ResponseEntity.status(HttpStatus.NOT_FOUND)
-                        .body(ApiResponse.error("Reserva no encontrada con ID: " + id, null)));
+    public ResponseEntity<ApiResponse<Booking>> getById(
+            @PathVariable String id,
+            @RequestHeader("X-User-Id") String userId,
+            @RequestHeader("X-User-Roles") String userRoles) {
+        Booking booking = getBookingUseCase.getById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reserva no encontrada"));
+        requireOwnerOrPlatformAdmin(booking, userId, userRoles);
+        return ResponseEntity.ok(ApiResponse.success(booking, "Reserva encontrada"));
     }
 
     @GetMapping("/user/{userId}")
-    public ResponseEntity<ApiResponse<List<Booking>>> getByUserId(@PathVariable String userId) {
-        List<Booking> bookings = getBookingUseCase.getByUserId(userId);
+    public ResponseEntity<ApiResponse<List<Booking>>> getByUserId(
+            @PathVariable String userId,
+            @RequestHeader("X-User-Id") String authenticatedUserId,
+            @RequestHeader("X-User-Roles") String userRoles) {
+        if (!isPlatformAdmin(userRoles) && !userId.equals(authenticatedUserId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Reservas no encontradas");
+        }
+        String requestedUserId = isPlatformAdmin(userRoles) ? userId : authenticatedUserId;
+        List<Booking> bookings = getBookingUseCase.getByUserId(requestedUserId);
         return ResponseEntity.ok(ApiResponse.success(bookings, "Reservas del usuario recuperadas exitosamente"));
     }
 
     @GetMapping("/{id}/tickets")
-    public ResponseEntity<ApiResponse<List<Ticket>>> getTicketsByBookingId(@PathVariable String id) {
+    public ResponseEntity<ApiResponse<List<Ticket>>> getTicketsByBookingId(
+            @PathVariable String id,
+            @RequestHeader("X-User-Id") String userId,
+            @RequestHeader("X-User-Roles") String userRoles) {
+        Booking booking = getBookingUseCase.getById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reserva no encontrada"));
+        requireOwnerOrPlatformAdmin(booking, userId, userRoles);
         List<Ticket> tickets = getBookingUseCase.getTicketsByBookingId(id);
         return ResponseEntity.ok(ApiResponse.success(tickets, "Tickets de la reserva recuperados exitosamente"));
     }
@@ -66,9 +91,46 @@ public class BookingController {
     @PostMapping("/tickets/validate")
     public ResponseEntity<ApiResponse<Ticket>> validateTicket(
             @RequestParam String ticketId,
-            @RequestParam String qrCodeHash) {
+            @RequestParam String qrCodeHash,
+            @RequestHeader("X-User-Roles") String userRoles,
+            @RequestHeader(value = "X-Tenant-ID", required = false) String tenantId,
+            @RequestHeader(value = "X-Tenant-Roles", required = false) String tenantRoles) {
+        boolean platformAdmin = isPlatformAdmin(userRoles);
+        if (!platformAdmin) {
+            Set<String> roles = parseRoles(tenantRoles);
+            if (tenantId == null || roles.stream().noneMatch(Set.of("TENANT_ADMIN", "EVENT_ORGANIZER")::contains)) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Se requiere un rol de personal del tenant");
+            }
+            Ticket ticket = getBookingUseCase.getTicketById(ticketId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Ticket no encontrado"));
+            Booking booking = getBookingUseCase.getById(ticket.getBookingId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reserva no encontrada"));
+            if (!tenantId.equals(eventTenantLookup.findTenantId(booking.getEventId()))) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "El ticket pertenece a otro tenant");
+            }
+        }
 
         Ticket validatedTicket = validateTicketUseCase.validateAndUseTicket(ticketId, qrCodeHash);
         return ResponseEntity.ok(ApiResponse.success(validatedTicket, "ACCESO CONCEDIDO: Ticket válido y marcado como USADO."));
+    }
+
+    private void requireOwnerOrPlatformAdmin(Booking booking, String userId, String userRoles) {
+        if (!isPlatformAdmin(userRoles) && !booking.getUserId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Reserva no encontrada");
+        }
+    }
+
+    private boolean isPlatformAdmin(String userRoles) {
+        return parseRoles(userRoles).contains("PLATFORM_ADMIN");
+    }
+
+    private Set<String> parseRoles(String roles) {
+        if (roles == null || roles.isBlank()) {
+            return Set.of();
+        }
+        return Arrays.stream(roles.split(","))
+                .map(String::trim)
+                .filter(role -> !role.isEmpty())
+                .collect(Collectors.toSet());
     }
 }

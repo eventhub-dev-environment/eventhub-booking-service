@@ -10,4 +10,5 @@ public interface GetBookingUseCase {
     Optional<Booking> getById(String id);
     List<Booking> getByUserId(String userId);
     List<Ticket> getTicketsByBookingId(String bookingId);
+    Optional<Ticket> getTicketById(String ticketId);
 }
