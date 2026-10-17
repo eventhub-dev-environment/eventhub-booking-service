@@ -35,6 +35,7 @@ public class BookingService implements CreateBookingUseCase, GetBookingUseCase, 
         BookingCreatedEvent event = BookingCreatedEvent.builder()
                 .bookingId(savedBooking.getId())
                 .eventId(savedBooking.getEventId())
+                .sessionId(savedBooking.getSessionId())
                 .ticketTierId(savedBooking.getTicketTierId())
                 .userId(savedBooking.getUserId())
                 .quantity(savedBooking.getQuantity())

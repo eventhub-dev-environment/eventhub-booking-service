@@ -11,6 +11,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -37,14 +39,19 @@ class BookingControllerTest {
                 mock(EventTenantLookup.class));
         CreateBookingRequest request = new CreateBookingRequest();
         request.setEventId("event-123");
+        request.setSessionId("session-123");
         request.setTicketTierId("tier-123");
         request.setQuantity(2);
+        request.setAttendeeData(List.of(Map.of("shirtSize", "M"), Map.of("shirtSize", "S")));
         request.setTotalPrice(new BigDecimal("20.00"));
 
         controller.createBooking(request, "signed-user-id", "buyer@example.com", "CUSTOMER");
 
         assertThat(submittedBooking.get().getUserId()).isEqualTo("signed-user-id");
         assertThat(submittedBooking.get().getUserEmail()).isEqualTo("buyer@example.com");
+        assertThat(submittedBooking.get().getSessionId()).isEqualTo("session-123");
+        assertThat(submittedBooking.get().getAttendeeData())
+                .containsExactly(Map.of("shirtSize", "M"), Map.of("shirtSize", "S"));
     }
 
     @Test
@@ -83,6 +90,27 @@ class BookingControllerTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(exception -> ((ResponseStatusException) exception).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void rejectsRegistrationDataCountThatDiffersFromTicketQuantity() {
+        BookingController controller = new BookingController(
+                mock(CreateBookingUseCase.class),
+                mock(GetBookingUseCase.class),
+                mock(ValidateTicketUseCase.class),
+                mock(EventTenantLookup.class));
+        CreateBookingRequest request = new CreateBookingRequest();
+        request.setEventId("event-123");
+        request.setTicketTierId("tier-123");
+        request.setQuantity(2);
+        request.setTotalPrice(new BigDecimal("20.00"));
+        request.setAttendeeData(List.of(Map.of("shirtSize", "M")));
+
+        assertThatThrownBy(() -> controller.createBooking(
+                request, "user-123", "buyer@example.com", "CUSTOMER"))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(exception -> ((ResponseStatusException) exception).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
     @Test

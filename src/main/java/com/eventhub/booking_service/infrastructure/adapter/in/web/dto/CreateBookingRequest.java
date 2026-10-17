@@ -6,6 +6,8 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
 
 @Data
 public class CreateBookingRequest {
@@ -13,12 +15,16 @@ public class CreateBookingRequest {
     @NotBlank(message = "El eventId es obligatorio")
     private String eventId;
 
+    private String sessionId;
+
     @NotBlank(message = "El ticketTierId es obligatorio")
     private String ticketTierId;
 
     @NotNull(message = "La cantidad es obligatoria")
     @Min(value = 1, message = "Debe reservar al menos 1 entrada")
     private Integer quantity;
+
+    private List<Map<String, String>> attendeeData;
 
     @NotNull(message = "El precio total es obligatorio")
     private BigDecimal totalPrice;

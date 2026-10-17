@@ -14,8 +14,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.List;
 import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -38,12 +39,15 @@ public class BookingController {
         if (!parseRoles(userRoles).contains("CUSTOMER")) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Se requiere el rol CUSTOMER");
         }
+        validateAttendeeData(request.getAttendeeData(), request.getQuantity());
         Booking booking = Booking.builder()
                 .eventId(request.getEventId())
+                .sessionId(request.getSessionId())
                 .ticketTierId(request.getTicketTierId())
                 .userId(userId)
                 .userEmail(userEmail)
                 .quantity(request.getQuantity())
+                .attendeeData(request.getAttendeeData())
                 .totalPrice(request.getTotalPrice())
                 .build();
 
@@ -132,5 +136,19 @@ public class BookingController {
                 .map(String::trim)
                 .filter(role -> !role.isEmpty())
                 .collect(Collectors.toSet());
+    }
+
+    private void validateAttendeeData(List<Map<String, String>> attendeeData, Integer quantity) {
+        if (attendeeData == null || attendeeData.isEmpty()) {
+            return;
+        }
+        if (quantity == null || attendeeData.size() != quantity
+                || attendeeData.stream().anyMatch(fields -> fields == null
+                    || fields.keySet().stream().anyMatch(key -> key == null || key.isBlank())
+                    || fields.values().stream().anyMatch(value -> value == null))) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Los datos de registro deben incluir un mapa válido por cada entrada.");
+        }
     }
 }

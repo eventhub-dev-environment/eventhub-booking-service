@@ -12,6 +12,7 @@ import org.mockito.ArgumentCaptor;
 import java.math.BigDecimal;
 import java.util.Map;
 import java.util.Optional;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -28,6 +29,8 @@ class PaymentEventListenerTest {
         Booking booking = Booking.builder()
                 .id("booking-123")
                 .eventId("event-123")
+                .sessionId("session-123")
+                .seatIds(List.of("seat-1"))
                 .userId("user-123")
                 .userEmail("buyer@example.com")
                 .quantity(1)
@@ -51,5 +54,7 @@ class PaymentEventListenerTest {
         assertThat(eventCaptor.getValue().getUserEmail()).isEqualTo("buyer@example.com");
         assertThat(eventCaptor.getValue().getTransactionId()).isEqualTo("transaction-123");
         assertThat(eventCaptor.getValue().getTotalPrice()).isEqualByComparingTo("42.50");
+        assertThat(eventCaptor.getValue().getSessionId()).isEqualTo("session-123");
+        assertThat(eventCaptor.getValue().getTickets().getFirst().getSeatId()).isEqualTo("seat-1");
     }
 }

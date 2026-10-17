@@ -48,7 +48,11 @@ public class PaymentEventListener {
                     Ticket ticket = Ticket.builder()
                             .bookingId(booking.getId())
                             .eventId(booking.getEventId())
+                            .sessionId(booking.getSessionId())
                             .ticketTierId(booking.getTicketTierId())
+                            .seatId(booking.getSeatIds() != null && i < booking.getSeatIds().size()
+                                    ? booking.getSeatIds().get(i)
+                                    : null)
                             .qrCodeHash(UUID.randomUUID().toString())
                             .status(TicketStatus.ISSUED)
                             .issuedAt(LocalDateTime.now())
@@ -60,6 +64,7 @@ public class PaymentEventListener {
                             .ticketId(savedTicket.getId())
                             .qrCodeHash(savedTicket.getQrCodeHash())
                             .ticketTierId(savedTicket.getTicketTierId())
+                            .seatId(savedTicket.getSeatId())
                             .build());
                 }
 
@@ -67,6 +72,7 @@ public class PaymentEventListener {
                 BookingConfirmedEvent confirmedEvent = BookingConfirmedEvent.builder()
                         .bookingId(booking.getId())
                         .eventId(booking.getEventId())
+                        .sessionId(booking.getSessionId())
                         .userId(booking.getUserId())
                         .userEmail(booking.getUserEmail())
                         .transactionId(transactionId)

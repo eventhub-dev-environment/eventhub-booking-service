@@ -6,6 +6,9 @@ import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 @Entity
 @Table(name = "bookings")
@@ -22,6 +25,8 @@ public class BookingEntity {
 
     @Column(nullable = false)
     private String eventId;
+
+    private String sessionId;
 
     @Column(nullable = false)
     private String ticketTierId;
@@ -47,4 +52,25 @@ public class BookingEntity {
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
+
+    @ElementCollection
+    @CollectionTable(
+            name = "booking_attendee_data",
+            joinColumns = @JoinColumn(name = "booking_id"),
+            uniqueConstraints = @UniqueConstraint(columnNames = {"booking_id", "attendee_index", "field_key"}))
+    @OrderColumn(name = "attendee_index")
+    @MapKeyColumn(name = "field_key", nullable = false)
+    @Column(name = "field_value")
+    @Builder.Default
+    private List<Map<String, String>> attendeeData = new ArrayList<>();
+
+    @ElementCollection
+    @CollectionTable(
+            name = "booking_seats",
+            joinColumns = @JoinColumn(name = "booking_id"),
+            uniqueConstraints = @UniqueConstraint(columnNames = {"booking_id", "seat_id"}))
+    @Column(name = "seat_id", nullable = false)
+    @OrderColumn(name = "seat_index")
+    @Builder.Default
+    private List<String> seatIds = new ArrayList<>();
 }
