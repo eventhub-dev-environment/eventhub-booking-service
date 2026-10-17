@@ -78,4 +78,20 @@ public interface SpringDataInventoryPoolRepository extends JpaRepository<Invento
             @Param("sessionId") String sessionId,
             @Param("ticketTierId") String ticketTierId,
             @Param("quantity") int quantity);
+
+    @Modifying
+    @Query(value = """
+            UPDATE inventory_pools
+            SET sold_quantity = sold_quantity - :quantity,
+                available_quantity = available_quantity + :quantity
+            WHERE event_id = :eventId
+              AND session_id = :sessionId
+              AND ticket_tier_id = :ticketTierId
+              AND sold_quantity >= :quantity
+            """, nativeQuery = true)
+    int releaseSold(
+            @Param("eventId") String eventId,
+            @Param("sessionId") String sessionId,
+            @Param("ticketTierId") String ticketTierId,
+            @Param("quantity") int quantity);
 }

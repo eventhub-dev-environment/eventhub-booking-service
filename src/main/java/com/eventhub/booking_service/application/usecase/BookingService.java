@@ -1,6 +1,7 @@
 package com.eventhub.booking_service.application.usecase;
 
 import com.eventhub.booking_service.domain.event.BookingCreatedEvent;
+import com.eventhub.booking_service.domain.event.BookingCancellationRequestedEvent;
 import com.eventhub.booking_service.domain.exception.InventoryUnavailableException;
 import com.eventhub.booking_service.domain.model.Booking;
 import com.eventhub.booking_service.domain.model.BookingInventoryDefinition;
@@ -9,6 +10,7 @@ import com.eventhub.booking_service.domain.model.InventoryMode;
 import com.eventhub.booking_service.domain.model.Ticket;
 import com.eventhub.booking_service.domain.model.TicketStatus;
 import com.eventhub.booking_service.domain.port.in.CreateBookingUseCase;
+import com.eventhub.booking_service.domain.port.in.CancelBookingUseCase;
 import com.eventhub.booking_service.domain.port.in.GetBookingUseCase;
 import com.eventhub.booking_service.domain.port.in.ValidateTicketUseCase;
 import com.eventhub.booking_service.domain.port.out.BookingEventPublisherPort;
@@ -18,6 +20,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.math.RoundingMode;
@@ -26,11 +31,18 @@ import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
-public class BookingService implements CreateBookingUseCase, GetBookingUseCase, ValidateTicketUseCase {
+public class BookingService implements CreateBookingUseCase, GetBookingUseCase, ValidateTicketUseCase,
+        CancelBookingUseCase {
 
     private final BookingRepositoryPort bookingRepositoryPort;
     private final BookingEventPublisherPort eventPublisherPort;
     private final InventoryRepositoryPort inventoryRepositoryPort;
+
+    @Value("${booking.cancellation.refund-cutoff-hours:24}")
+    private int refundCutoffHours = 24;
+
+    @Value("${payment.currency:COP}")
+    private String paymentCurrency = "COP";
 
     @Override
     @Transactional
@@ -75,6 +87,9 @@ public class BookingService implements CreateBookingUseCase, GetBookingUseCase, 
                 java.math.BigDecimal.valueOf(booking.getQuantity())).setScale(2, RoundingMode.HALF_UP));
         booking.setCreatedAt(now);
         booking.setExpiresAt(now.plusMinutes(10));
+        if (inventoryDefinition.eventStartsAt() != null) {
+            booking.setRefundCutoffAt(inventoryDefinition.eventStartsAt().minusHours(refundCutoffHours));
+        }
         booking.setUpdatedAt(now);
 
         Booking savedBooking = bookingRepositoryPort.save(booking);
@@ -102,6 +117,49 @@ public class BookingService implements CreateBookingUseCase, GetBookingUseCase, 
     @Override
     public Optional<Booking> getById(String id) {
         return bookingRepositoryPort.findById(id);
+    }
+
+    @Override
+    @Transactional
+    public Booking requestCancellation(String bookingId, String userId) {
+        Booking booking = bookingRepositoryPort.findByIdForUpdate(bookingId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reserva no encontrada"));
+        if (!booking.getUserId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Reserva no encontrada");
+        }
+        if (booking.getStatus() == BookingStatus.CANCELLATION_REQUESTED
+                || booking.getStatus() == BookingStatus.CANCELLED) {
+            return booking;
+        }
+        if (booking.getStatus() != BookingStatus.CONFIRMED
+                || booking.getRefundCutoffAt() == null
+                || !LocalDateTime.now().isBefore(booking.getRefundCutoffAt())
+                || booking.getPaymentTransactionId() == null
+                || booking.getPaymentTransactionId().isBlank()
+                || booking.getTotalPrice() == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "La reserva no cumple las condiciones para solicitar un reembolso");
+        }
+        if (bookingRepositoryPort.hasUsedTicket(bookingId)
+                || booking.getQuantity() == null
+                || bookingRepositoryPort.countTicketsByBookingIdAndStatus(
+                        bookingId, TicketStatus.ISSUED) != booking.getQuantity()) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Solo se pueden reembolsar reservas con todas las entradas sin usar");
+        }
+
+        booking.setStatus(BookingStatus.CANCELLATION_REQUESTED);
+        booking.setUpdatedAt(LocalDateTime.now());
+        Booking savedBooking = bookingRepositoryPort.save(booking);
+        eventPublisherPort.publishBookingCancellationRequested(BookingCancellationRequestedEvent.builder()
+                .bookingId(savedBooking.getId())
+                .transactionId(savedBooking.getPaymentTransactionId())
+                .amount(savedBooking.getTotalPrice())
+                .currency(paymentCurrency)
+                .build());
+        return savedBooking;
     }
 
     @Scheduled(fixedDelayString = "${booking.expiration.scan-interval-ms:15000}")

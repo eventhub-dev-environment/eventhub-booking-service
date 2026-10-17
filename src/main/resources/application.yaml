@@ -28,6 +28,10 @@ gateway:
 payment:
   currency: COP
 
+booking:
+  cancellation:
+    refund-cutoff-hours: 24
+
 management:
   endpoints:
     web:

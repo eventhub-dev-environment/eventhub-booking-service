@@ -150,6 +150,26 @@ public class InventoryJpaAdapter implements InventoryRepositoryPort {
         }
     }
 
+    @Override
+    @Transactional
+    public void releaseConfirmed(Booking booking) {
+        if (booking.getSeatIds() != null && !booking.getSeatIds().isEmpty()) {
+            int released = seatRepository.releaseSoldSeats(
+                    booking.getEventId(), booking.getSessionId(), booking.getTicketTierId(), booking.getId());
+            if (released != booking.getSeatIds().size()) {
+                throw new InventoryConfigurationConflictException(
+                        "No se pudo devolver de forma íntegra el inventario vendido");
+            }
+            return;
+        }
+        int released = poolRepository.releaseSold(
+                booking.getEventId(), booking.getSessionId(), booking.getTicketTierId(), booking.getQuantity());
+        if (released != 1) {
+            throw new InventoryConfigurationConflictException(
+                    "No se pudo devolver de forma íntegra el inventario vendido");
+        }
+    }
+
     private boolean matches(List<InventorySeatEntity> persistedSeats, InventorySeatDefinition definition) {
         return persistedSeats.stream()
                 .filter(seat -> seat.getSeatId().equals(definition.seatId()))

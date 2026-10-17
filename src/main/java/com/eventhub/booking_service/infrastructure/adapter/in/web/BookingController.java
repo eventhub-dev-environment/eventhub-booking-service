@@ -3,6 +3,7 @@ package com.eventhub.booking_service.infrastructure.adapter.in.web;
 import com.eventhub.booking_service.domain.model.Booking;
 import com.eventhub.booking_service.domain.model.BookingInventoryDefinition;
 import com.eventhub.booking_service.domain.model.Ticket;
+import com.eventhub.booking_service.domain.port.in.CancelBookingUseCase;
 import com.eventhub.booking_service.domain.port.in.CreateBookingUseCase;
 import com.eventhub.booking_service.domain.port.in.GetBookingUseCase;
 import com.eventhub.booking_service.domain.port.in.ValidateTicketUseCase;
@@ -32,6 +33,7 @@ public class BookingController {
     private final GetBookingUseCase getBookingUseCase;
     private final ValidateTicketUseCase validateTicketUseCase;
     private final EventTenantLookup eventTenantLookup;
+    private final CancelBookingUseCase cancelBookingUseCase;
 
     @PostMapping
     public ResponseEntity<ApiResponse<Booking>> createBooking(
@@ -79,6 +81,18 @@ public class BookingController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reserva no encontrada"));
         requireOwnerOrPlatformAdmin(booking, userId, userRoles);
         return ResponseEntity.ok(ApiResponse.success(booking, "Reserva encontrada"));
+    }
+
+    @PostMapping("/{id}/cancel")
+    public ResponseEntity<ApiResponse<Booking>> cancelBooking(
+            @PathVariable String id,
+            @RequestHeader("X-User-Id") String userId,
+            @RequestHeader("X-User-Roles") String userRoles) {
+        if (!parseRoles(userRoles).contains("CUSTOMER")) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Se requiere el rol CUSTOMER");
+        }
+        Booking booking = cancelBookingUseCase.requestCancellation(id, userId);
+        return ResponseEntity.ok(ApiResponse.success(booking, "Solicitud de cancelación procesada"));
     }
 
     @GetMapping("/user/{userId}")

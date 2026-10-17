@@ -47,6 +47,7 @@ public class BookingEntity {
 
     private LocalDateTime expiresAt;
     private String paymentTransactionId;
+    private java.time.LocalDateTime refundCutoffAt;
     private Boolean inventoryHeld;
 
     @Column(nullable = false)

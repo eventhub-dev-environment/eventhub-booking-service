@@ -72,6 +72,13 @@ public class PaymentEventListener {
                 log.info("El pago de la reserva {} ya fue procesado; se ignora la entrega repetida", bookingId);
                 return;
             }
+            if ((booking.getStatus() == BookingStatus.CANCELLATION_REQUESTED
+                    || booking.getStatus() == BookingStatus.CANCELLATION_REVIEW_REQUIRED
+                    || booking.getStatus() == BookingStatus.CANCELLED)
+                    && transactionId.equals(booking.getPaymentTransactionId())) {
+                log.info("Se ignora el pago repetido de la reserva {} durante su cancelación", bookingId);
+                return;
+            }
 
             LocalDateTime now = LocalDateTime.now();
             boolean paymentMatches = booking.getTotalPrice() != null
@@ -145,6 +152,79 @@ public class PaymentEventListener {
             log.info("Reserva {} confirmada exitosamente, tickets emitidos y evento de confirmación publicado.", bookingId);
         });
         saveInboxEvent(eventId, "payment.completed");
+    }
+
+    @RabbitListener(queues = RabbitMQConfig.PAYMENT_REFUNDED_QUEUE)
+    @Transactional
+    public void handlePaymentRefunded(
+            Map<String, Object> event,
+            @Header(name = AmqpHeaders.MESSAGE_ID, required = false) String messageId) {
+        String bookingId = (String) event.get("bookingId");
+        String transactionId = (String) event.get("transactionId");
+        String eventId = resolveEventId(messageId, "payment.refunded", bookingId, transactionId);
+        if (paymentInboxRepository.existsById(eventId)) {
+            return;
+        }
+        if (bookingId == null || bookingId.isBlank() || transactionId == null || transactionId.isBlank()) {
+            throw new IllegalArgumentException("Evento de reembolso inválido");
+        }
+
+        Booking booking = bookingRepositoryPort.findByIdForUpdate(bookingId)
+                .orElseThrow(() -> new IllegalStateException("La reserva reembolsada no existe"));
+        if (booking.getStatus() == BookingStatus.CANCELLED
+                && transactionId.equals(booking.getPaymentTransactionId())) {
+            saveInboxEvent(eventId, "payment.refunded");
+            return;
+        }
+        if ((booking.getStatus() != BookingStatus.CANCELLATION_REQUESTED
+                && booking.getStatus() != BookingStatus.CANCELLATION_REVIEW_REQUIRED)
+                || !transactionId.equals(booking.getPaymentTransactionId())) {
+            throw new IllegalStateException("El reembolso no coincide con una cancelación pendiente");
+        }
+
+        if (bookingRepositoryPort.countTicketsByBookingIdAndStatus(
+                bookingId, TicketStatus.ISSUED) != booking.getQuantity()) {
+            booking.setStatus(BookingStatus.CANCELLATION_REVIEW_REQUIRED);
+            booking.setUpdatedAt(LocalDateTime.now());
+            bookingRepositoryPort.save(booking);
+            saveInboxEvent(eventId, "payment.refunded");
+            return;
+        }
+        inventoryRepositoryPort.releaseConfirmed(booking);
+        int cancelledTickets = bookingRepositoryPort.cancelIssuedTickets(bookingId);
+        if (cancelledTickets != booking.getQuantity()) {
+            throw new IllegalStateException("No se pudieron cancelar todas las entradas de la reserva");
+        }
+        booking.setStatus(BookingStatus.CANCELLED);
+        booking.setUpdatedAt(LocalDateTime.now());
+        bookingRepositoryPort.save(booking);
+        saveInboxEvent(eventId, "payment.refunded");
+    }
+
+    @RabbitListener(queues = RabbitMQConfig.PAYMENT_REFUND_FAILED_QUEUE)
+    @Transactional
+    public void handlePaymentRefundFailed(
+            Map<String, Object> event,
+            @Header(name = AmqpHeaders.MESSAGE_ID, required = false) String messageId) {
+        String bookingId = (String) event.get("bookingId");
+        String transactionId = (String) event.get("transactionId");
+        String eventId = resolveEventId(messageId, "payment.refund.failed", bookingId, transactionId);
+        if (paymentInboxRepository.existsById(eventId)) {
+            return;
+        }
+        if (bookingId == null || bookingId.isBlank() || transactionId == null || transactionId.isBlank()) {
+            throw new IllegalArgumentException("Evento de reembolso fallido inválido");
+        }
+
+        Booking booking = bookingRepositoryPort.findByIdForUpdate(bookingId)
+                .orElseThrow(() -> new IllegalStateException("La reserva asociada al reembolso no existe"));
+        if (booking.getStatus() == BookingStatus.CANCELLATION_REQUESTED
+                && transactionId.equals(booking.getPaymentTransactionId())) {
+            booking.setStatus(BookingStatus.CANCELLATION_REVIEW_REQUIRED);
+            booking.setUpdatedAt(LocalDateTime.now());
+            bookingRepositoryPort.save(booking);
+        }
+        saveInboxEvent(eventId, "payment.refund.failed");
     }
 
     private void saveInboxEvent(String eventId, String eventType) {

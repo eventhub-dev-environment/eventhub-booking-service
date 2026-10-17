@@ -1,6 +1,7 @@
 package com.eventhub.booking_service.application.usecase;
 
 import com.eventhub.booking_service.domain.event.BookingCreatedEvent;
+import com.eventhub.booking_service.domain.event.BookingCancellationRequestedEvent;
 import com.eventhub.booking_service.domain.model.Booking;
 import com.eventhub.booking_service.domain.model.BookingInventoryDefinition;
 import com.eventhub.booking_service.domain.model.BookingStatus;
@@ -18,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 class BookingServiceTest {
@@ -50,7 +52,8 @@ class BookingServiceTest {
                 new BigDecimal("12.345"),
                 InventoryMode.GENERAL_ADMISSION,
                 10,
-                List.of());
+                List.of(),
+                java.time.LocalDateTime.now().plusDays(30));
 
         Booking created = service.createBooking(booking, definition);
 
@@ -59,6 +62,7 @@ class BookingServiceTest {
         assertThat(created.getInventoryHeld()).isTrue();
         assertThat(created.getTotalPrice()).isEqualByComparingTo("24.69");
         assertThat(created.getExpiresAt()).isAfter(created.getCreatedAt());
+        assertThat(created.getRefundCutoffAt()).isBefore(definition.eventStartsAt());
         verify(inventoryRepository).initialize(definition);
         verify(inventoryRepository).hold(created, definition);
         verify(eventPublisher).publishBookingCreated(any(BookingCreatedEvent.class));
@@ -91,5 +95,80 @@ class BookingServiceTest {
         assertThat(expired.getInventoryHeld()).isFalse();
         verify(inventoryRepository).release(expired);
         verify(bookingRepository).save(expired);
+    }
+
+    @Test
+    void requestsOneFullRefundForEligibleConfirmedBooking() {
+        BookingRepositoryPort bookingRepository = mock(BookingRepositoryPort.class);
+        BookingEventPublisherPort eventPublisher = mock(BookingEventPublisherPort.class);
+        InventoryRepositoryPort inventoryRepository = mock(InventoryRepositoryPort.class);
+        Booking booking = Booking.builder()
+                .id("booking-123")
+                .userId("user-123")
+                .status(BookingStatus.CONFIRMED)
+                .quantity(1)
+                .paymentTransactionId("pi-123")
+                .totalPrice(new BigDecimal("25.00"))
+                .refundCutoffAt(java.time.LocalDateTime.now().plusHours(1))
+                .build();
+        when(bookingRepository.findByIdForUpdate("booking-123")).thenReturn(Optional.of(booking));
+        when(bookingRepository.countTicketsByBookingIdAndStatus(
+                "booking-123", com.eventhub.booking_service.domain.model.TicketStatus.ISSUED)).thenReturn(1L);
+        when(bookingRepository.save(booking)).thenReturn(booking);
+        BookingService service = new BookingService(bookingRepository, eventPublisher, inventoryRepository);
+
+        Booking result = service.requestCancellation("booking-123", "user-123");
+        Booking repeated = service.requestCancellation("booking-123", "user-123");
+
+        assertThat(result.getStatus()).isEqualTo(BookingStatus.CANCELLATION_REQUESTED);
+        assertThat(repeated).isSameAs(result);
+        verify(eventPublisher).publishBookingCancellationRequested(any(BookingCancellationRequestedEvent.class));
+        verify(bookingRepository).save(booking);
+    }
+
+    @Test
+    void rejectsCancellationAfterRefundCutoff() {
+        BookingRepositoryPort bookingRepository = mock(BookingRepositoryPort.class);
+        BookingEventPublisherPort eventPublisher = mock(BookingEventPublisherPort.class);
+        Booking booking = Booking.builder()
+                .id("booking-123")
+                .userId("user-123")
+                .status(BookingStatus.CONFIRMED)
+                .quantity(1)
+                .paymentTransactionId("pi-123")
+                .totalPrice(new BigDecimal("25.00"))
+                .refundCutoffAt(java.time.LocalDateTime.now().minusSeconds(1))
+                .build();
+        when(bookingRepository.findByIdForUpdate("booking-123")).thenReturn(Optional.of(booking));
+        BookingService service = new BookingService(
+                bookingRepository, eventPublisher, mock(InventoryRepositoryPort.class));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> service.requestCancellation("booking-123", "user-123"))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+
+        verify(eventPublisher, never()).publishBookingCancellationRequested(any());
+    }
+
+    @Test
+    void hidesCancellationForAnotherUser() {
+        BookingRepositoryPort bookingRepository = mock(BookingRepositoryPort.class);
+        Booking booking = Booking.builder()
+                .id("booking-123")
+                .userId("owner-user")
+                .status(BookingStatus.CONFIRMED)
+                .build();
+        when(bookingRepository.findByIdForUpdate("booking-123")).thenReturn(Optional.of(booking));
+        BookingService service = new BookingService(
+                bookingRepository,
+                mock(BookingEventPublisherPort.class),
+                mock(InventoryRepositoryPort.class));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> service.requestCancellation("booking-123", "different-user"))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .extracting(exception -> ((org.springframework.web.server.ResponseStatusException) exception)
+                        .getStatusCode())
+                .isEqualTo(org.springframework.http.HttpStatus.NOT_FOUND);
     }
 }

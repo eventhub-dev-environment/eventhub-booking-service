@@ -16,4 +16,7 @@ public interface BookingRepositoryPort {
     Ticket saveTicket(Ticket ticket);
     List<Ticket> findTicketsByBookingId(String bookingId);
     Optional<Ticket> findTicketById(String id);
+    boolean hasUsedTicket(String bookingId);
+    long countTicketsByBookingIdAndStatus(String bookingId, com.eventhub.booking_service.domain.model.TicketStatus status);
+    int cancelIssuedTickets(String bookingId);
 }

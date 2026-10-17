@@ -8,4 +8,5 @@ public interface InventoryRepositoryPort {
     void hold(Booking booking, BookingInventoryDefinition definition);
     void confirm(Booking booking);
     void release(Booking booking);
+    void releaseConfirmed(Booking booking);
 }

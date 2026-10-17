@@ -28,6 +28,7 @@ public class Booking {
     private BookingStatus status;
     private LocalDateTime expiresAt;
     private String paymentTransactionId;
+    private java.time.LocalDateTime refundCutoffAt;
     private Boolean inventoryHeld;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

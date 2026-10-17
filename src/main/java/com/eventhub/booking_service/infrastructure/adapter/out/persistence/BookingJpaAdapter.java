@@ -3,6 +3,7 @@ package com.eventhub.booking_service.infrastructure.adapter.out.persistence;
 import com.eventhub.booking_service.domain.model.Booking;
 import com.eventhub.booking_service.domain.model.BookingStatus;
 import com.eventhub.booking_service.domain.model.Ticket;
+import com.eventhub.booking_service.domain.model.TicketStatus;
 import com.eventhub.booking_service.domain.port.out.BookingRepositoryPort;
 import com.eventhub.booking_service.infrastructure.adapter.out.persistence.entity.BookingAttendeeDataField;
 import com.eventhub.booking_service.infrastructure.adapter.out.persistence.entity.BookingEntity;
@@ -93,6 +94,21 @@ public class BookingJpaAdapter implements BookingRepositoryPort {
         return ticketRepository.findById(id).map(this::mapToTicketDomain);
     }
 
+    @Override
+    public boolean hasUsedTicket(String bookingId) {
+        return ticketRepository.existsByBookingIdAndStatus(bookingId, TicketStatus.USED);
+    }
+
+    @Override
+    public long countTicketsByBookingIdAndStatus(String bookingId, TicketStatus status) {
+        return ticketRepository.countByBookingIdAndStatus(bookingId, status);
+    }
+
+    @Override
+    public int cancelIssuedTickets(String bookingId) {
+        return ticketRepository.cancelIssuedTickets(bookingId, TicketStatus.ISSUED, TicketStatus.CANCELLED);
+    }
+
     private BookingEntity mapToBookingEntity(Booking domain) {
         return BookingEntity.builder()
                 .id(domain.getId())
@@ -107,6 +123,7 @@ public class BookingJpaAdapter implements BookingRepositoryPort {
                 .status(domain.getStatus())
                 .expiresAt(domain.getExpiresAt())
                 .paymentTransactionId(domain.getPaymentTransactionId())
+                .refundCutoffAt(domain.getRefundCutoffAt())
                 .inventoryHeld(domain.getInventoryHeld())
                 .seatIds(domain.getSeatIds() == null ? List.of() : domain.getSeatIds())
                 .createdAt(domain.getCreatedAt())
@@ -128,6 +145,7 @@ public class BookingJpaAdapter implements BookingRepositoryPort {
                 .status(entity.getStatus())
                 .expiresAt(entity.getExpiresAt())
                 .paymentTransactionId(entity.getPaymentTransactionId())
+                .refundCutoffAt(entity.getRefundCutoffAt())
                 .inventoryHeld(entity.getInventoryHeld())
                 .seatIds(entity.getSeatIds() == null ? List.of() : entity.getSeatIds())
                 .createdAt(entity.getCreatedAt())

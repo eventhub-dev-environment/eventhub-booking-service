@@ -25,6 +25,69 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.never;
 
 class PaymentEventListenerTest {
+    @Test
+    void completesCancellationOnlyAfterConfirmedPaymentRefund() {
+        BookingRepositoryPort bookingRepository = mock(BookingRepositoryPort.class);
+        BookingEventPublisherPort eventPublisher = mock(BookingEventPublisherPort.class);
+        InventoryRepositoryPort inventoryRepository = mock(InventoryRepositoryPort.class);
+        SpringDataJpaPaymentInboxRepository inboxRepository = mock(SpringDataJpaPaymentInboxRepository.class);
+        Booking booking = Booking.builder()
+                .id("booking-123")
+                .eventId("event-123")
+                .sessionId("session-123")
+                .ticketTierId("tier-123")
+                .quantity(2)
+                .seatIds(List.of())
+                .paymentTransactionId("pi-123")
+                .status(BookingStatus.CANCELLATION_REQUESTED)
+                .build();
+        when(bookingRepository.findByIdForUpdate("booking-123")).thenReturn(Optional.of(booking));
+        when(bookingRepository.countTicketsByBookingIdAndStatus(
+                "booking-123", com.eventhub.booking_service.domain.model.TicketStatus.ISSUED)).thenReturn(2L);
+        when(bookingRepository.cancelIssuedTickets("booking-123")).thenReturn(2);
+        when(bookingRepository.save(booking)).thenReturn(booking);
+        PaymentEventListener listener = new PaymentEventListener(
+                bookingRepository, eventPublisher, inventoryRepository, inboxRepository);
+
+        listener.handlePaymentRefunded(Map.of(
+                "bookingId", "booking-123",
+                "transactionId", "pi-123",
+                "refundId", "re-123"), "evt-refund-123");
+
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.CANCELLED);
+        verify(inventoryRepository).releaseConfirmed(booking);
+        verify(bookingRepository).cancelIssuedTickets("booking-123");
+        verify(bookingRepository).save(booking);
+        verify(inboxRepository).save(any(PaymentInboxEventEntity.class));
+    }
+
+    @Test
+    void movesCancellationToManualReviewWhenStripeRefundFails() {
+        BookingRepositoryPort bookingRepository = mock(BookingRepositoryPort.class);
+        Booking booking = Booking.builder()
+                .id("booking-123")
+                .paymentTransactionId("pi-123")
+                .status(BookingStatus.CANCELLATION_REQUESTED)
+                .build();
+        when(bookingRepository.findByIdForUpdate("booking-123")).thenReturn(Optional.of(booking));
+        when(bookingRepository.save(booking)).thenReturn(booking);
+        SpringDataJpaPaymentInboxRepository inboxRepository = mock(SpringDataJpaPaymentInboxRepository.class);
+        PaymentEventListener listener = new PaymentEventListener(
+                bookingRepository,
+                mock(BookingEventPublisherPort.class),
+                mock(InventoryRepositoryPort.class),
+                inboxRepository);
+
+        listener.handlePaymentRefundFailed(Map.of(
+                "bookingId", "booking-123",
+                "transactionId", "pi-123",
+                "reason", "provider rejected refund"), "evt-refund-failed");
+
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.CANCELLATION_REVIEW_REQUIRED);
+        verify(bookingRepository).save(booking);
+        verify(inboxRepository).save(any(PaymentInboxEventEntity.class));
+    }
+
 
     @Test
     void publishesConfirmationWithBookingEmailAndPaymentDetails() {

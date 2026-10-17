@@ -15,6 +15,9 @@ import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.List;
 
 @Component
@@ -62,6 +65,7 @@ public class EventTenantLookup {
 
         List<TicketTierDefinition> tiers;
         String sessionId;
+        LocalDateTime eventStartsAt;
         if (event.sessions() != null && !event.sessions().isEmpty()) {
             if (requestedSessionId == null || requestedSessionId.isBlank()) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Debe seleccionar una sesión del evento");
@@ -72,12 +76,17 @@ public class EventTenantLookup {
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Sesión no encontrada"));
             tiers = session.ticketTiers();
             sessionId = session.id();
+            if (session.startsAt() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Event Service devolvió una sesión sin fecha");
+            }
+            eventStartsAt = session.startsAt().atZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime();
         } else {
             if (requestedSessionId != null && !requestedSessionId.equals(event.id())) {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Sesión no encontrada");
             }
             tiers = event.ticketTiers();
             sessionId = event.id();
+            eventStartsAt = event.eventDate();
         }
 
         if (tiers == null) {
@@ -104,7 +113,7 @@ public class EventTenantLookup {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Event Service devolvió una tarifa inválida");
         }
         return new BookingInventoryDefinition(
-                event.id(), sessionId, tier.id(), tier.price(), inventoryMode, tier.capacity(), seats);
+                event.id(), sessionId, tier.id(), tier.price(), inventoryMode, tier.capacity(), seats, eventStartsAt);
     }
 
     private JsonNode fetchEvent(String eventId) {
@@ -136,11 +145,15 @@ public class EventTenantLookup {
     private record EventDefinition(
             String id,
             String status,
+            LocalDateTime eventDate,
             List<TicketTierDefinition> ticketTiers,
             List<SessionDefinition> sessions) {
     }
 
-    private record SessionDefinition(String id, List<TicketTierDefinition> ticketTiers) {
+    private record SessionDefinition(
+            String id,
+            OffsetDateTime startsAt,
+            List<TicketTierDefinition> ticketTiers) {
     }
 
     private record TicketTierDefinition(

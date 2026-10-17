@@ -92,4 +92,20 @@ public interface SpringDataInventorySeatRepository extends JpaRepository<Invento
             @Param("sessionId") String sessionId,
             @Param("ticketTierId") String ticketTierId,
             @Param("bookingId") String bookingId);
+
+    @Modifying
+    @Query(value = """
+            UPDATE inventory_seats
+            SET state = 'AVAILABLE', booking_id = NULL, hold_expires_at = NULL
+            WHERE event_id = :eventId
+              AND session_id = :sessionId
+              AND ticket_tier_id = :ticketTierId
+              AND booking_id = :bookingId
+              AND state = 'SOLD'
+            """, nativeQuery = true)
+    int releaseSoldSeats(
+            @Param("eventId") String eventId,
+            @Param("sessionId") String sessionId,
+            @Param("ticketTierId") String ticketTierId,
+            @Param("bookingId") String bookingId);
 }

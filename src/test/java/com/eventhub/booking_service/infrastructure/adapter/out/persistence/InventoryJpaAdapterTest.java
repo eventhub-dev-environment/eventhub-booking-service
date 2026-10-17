@@ -20,6 +20,43 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class InventoryJpaAdapterTest {
+    @Test
+    void returnsGeneralAdmissionInventoryOnlyAfterConfirmedSaleIsRefunded() {
+        SpringDataInventoryPoolRepository pools = mock(SpringDataInventoryPoolRepository.class);
+        InventoryJpaAdapter adapter = new InventoryJpaAdapter(
+                pools, mock(SpringDataInventorySeatRepository.class));
+        Booking booking = Booking.builder()
+                .id("booking-1")
+                .eventId("event-1")
+                .sessionId("session-1")
+                .ticketTierId("tier-1")
+                .quantity(2)
+                .build();
+        when(pools.releaseSold("event-1", "session-1", "tier-1", 2)).thenReturn(1);
+
+        adapter.releaseConfirmed(booking);
+
+        verify(pools).releaseSold("event-1", "session-1", "tier-1", 2);
+    }
+
+    @Test
+    void rejectsPartialSeatInventoryReleaseAfterRefund() {
+        SpringDataInventorySeatRepository seats = mock(SpringDataInventorySeatRepository.class);
+        InventoryJpaAdapter adapter = new InventoryJpaAdapter(
+                mock(SpringDataInventoryPoolRepository.class), seats);
+        Booking booking = Booking.builder()
+                .id("booking-1")
+                .eventId("event-1")
+                .sessionId("session-1")
+                .ticketTierId("tier-1")
+                .quantity(2)
+                .seatIds(List.of("seat-a", "seat-b"))
+                .build();
+        when(seats.releaseSoldSeats("event-1", "session-1", "tier-1", "booking-1")).thenReturn(1);
+
+        assertThatThrownBy(() -> adapter.releaseConfirmed(booking))
+                .isInstanceOf(com.eventhub.booking_service.domain.exception.InventoryConfigurationConflictException.class);
+    }
 
     @Test
     void initializesGeneralAdmissionPoolWithoutResettingExistingCounts() {
@@ -84,7 +121,7 @@ class InventoryJpaAdapterTest {
                 "event-1", "session-1", "tier-1", BigDecimal.TEN,
                 InventoryMode.RESERVED_SEATING, 2, List.of(
                         new InventorySeatDefinition("seat-a", "A", "1", "1", false),
-                        new InventorySeatDefinition("seat-b", "A", "1", "2", false)));
+                        new InventorySeatDefinition("seat-b", "A", "1", "2", false)), null);
 
         adapter.hold(booking, definition);
 
@@ -98,6 +135,6 @@ class InventoryJpaAdapterTest {
     private BookingInventoryDefinition generalAdmissionDefinition() {
         return new BookingInventoryDefinition(
                 "event-1", "session-1", "tier-1", BigDecimal.TEN,
-                InventoryMode.GENERAL_ADMISSION, 20, List.of());
+                InventoryMode.GENERAL_ADMISSION, 20, List.of(), null);
     }
 }

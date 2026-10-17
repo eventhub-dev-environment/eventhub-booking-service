@@ -5,6 +5,7 @@ import com.eventhub.booking_service.domain.model.BookingInventoryDefinition;
 import com.eventhub.booking_service.domain.model.InventoryMode;
 import com.eventhub.booking_service.domain.model.Ticket;
 import com.eventhub.booking_service.domain.port.in.CreateBookingUseCase;
+import com.eventhub.booking_service.domain.port.in.CancelBookingUseCase;
 import com.eventhub.booking_service.domain.port.in.GetBookingUseCase;
 import com.eventhub.booking_service.domain.port.in.ValidateTicketUseCase;
 import com.eventhub.booking_service.infrastructure.adapter.in.web.dto.CreateBookingRequest;
@@ -38,12 +39,13 @@ class BookingControllerTest {
         when(eventTenantLookup.findBookingInventory("event-123", "session-123", "tier-123"))
                 .thenReturn(new BookingInventoryDefinition(
                         "event-123", "session-123", "tier-123", new BigDecimal("10.00"),
-                        InventoryMode.GENERAL_ADMISSION, 100, List.of()));
+                        InventoryMode.GENERAL_ADMISSION, 100, List.of(), null));
         BookingController controller = new BookingController(
                 createBookingUseCase,
                 mock(GetBookingUseCase.class),
                 mock(ValidateTicketUseCase.class),
-                eventTenantLookup);
+                eventTenantLookup,
+                mock(CancelBookingUseCase.class));
         CreateBookingRequest request = new CreateBookingRequest();
         request.setEventId("event-123");
         request.setSessionId("session-123");
@@ -72,7 +74,8 @@ class BookingControllerTest {
                 mock(CreateBookingUseCase.class),
                 getBookingUseCase,
                 mock(ValidateTicketUseCase.class),
-                mock(EventTenantLookup.class));
+                mock(EventTenantLookup.class),
+                mock(CancelBookingUseCase.class));
 
         assertThatThrownBy(() -> controller.getById("booking-123", "different-user", "CUSTOMER"))
                 .isInstanceOf(ResponseStatusException.class)
@@ -81,12 +84,48 @@ class BookingControllerTest {
     }
 
     @Test
+    void customerCanRequestCancellationForTheirBooking() {
+        CancelBookingUseCase cancelBookingUseCase = mock(CancelBookingUseCase.class);
+        Booking booking = Booking.builder().id("booking-123").build();
+        when(cancelBookingUseCase.requestCancellation("booking-123", "user-123")).thenReturn(booking);
+        BookingController controller = new BookingController(
+                mock(CreateBookingUseCase.class),
+                mock(GetBookingUseCase.class),
+                mock(ValidateTicketUseCase.class),
+                mock(EventTenantLookup.class),
+                cancelBookingUseCase);
+
+        var response = controller.cancelBooking("booking-123", "user-123", "CUSTOMER");
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        verify(cancelBookingUseCase).requestCancellation("booking-123", "user-123");
+    }
+
+    @Test
+    void nonCustomerCannotRequestCancellation() {
+        CancelBookingUseCase cancelBookingUseCase = mock(CancelBookingUseCase.class);
+        BookingController controller = new BookingController(
+                mock(CreateBookingUseCase.class),
+                mock(GetBookingUseCase.class),
+                mock(ValidateTicketUseCase.class),
+                mock(EventTenantLookup.class),
+                cancelBookingUseCase);
+
+        assertThatThrownBy(() -> controller.cancelBooking("booking-123", "user-123", "EVENT_ORGANIZER"))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(exception -> ((ResponseStatusException) exception).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+        verify(cancelBookingUseCase, never()).requestCancellation("booking-123", "user-123");
+    }
+
+    @Test
     void customerCannotCreateBookingWithoutCustomerRole() {
         BookingController controller = new BookingController(
                 mock(CreateBookingUseCase.class),
                 mock(GetBookingUseCase.class),
                 mock(ValidateTicketUseCase.class),
-                mock(EventTenantLookup.class));
+                mock(EventTenantLookup.class),
+                mock(CancelBookingUseCase.class));
         CreateBookingRequest request = new CreateBookingRequest();
         request.setEventId("event-123");
         request.setTicketTierId("tier-123");
@@ -105,7 +144,8 @@ class BookingControllerTest {
                 mock(CreateBookingUseCase.class),
                 mock(GetBookingUseCase.class),
                 mock(ValidateTicketUseCase.class),
-                mock(EventTenantLookup.class));
+                mock(EventTenantLookup.class),
+                mock(CancelBookingUseCase.class));
         CreateBookingRequest request = new CreateBookingRequest();
         request.setEventId("event-123");
         request.setTicketTierId("tier-123");
@@ -126,13 +166,14 @@ class BookingControllerTest {
         when(eventTenantLookup.findBookingInventory("event-123", null, "tier-123"))
                 .thenReturn(new BookingInventoryDefinition(
                         "event-123", "event-123", "tier-123", new BigDecimal("10.00"),
-                        InventoryMode.GENERAL_ADMISSION, 100, List.of()));
+                        InventoryMode.GENERAL_ADMISSION, 100, List.of(), null));
         CreateBookingUseCase createBookingUseCase = mock(CreateBookingUseCase.class);
         BookingController controller = new BookingController(
                 createBookingUseCase,
                 mock(GetBookingUseCase.class),
                 mock(ValidateTicketUseCase.class),
-                eventTenantLookup);
+                eventTenantLookup,
+                mock(CancelBookingUseCase.class));
         CreateBookingRequest request = new CreateBookingRequest();
         request.setEventId("event-123");
         request.setTicketTierId("tier-123");
@@ -162,7 +203,8 @@ class BookingControllerTest {
                 mock(CreateBookingUseCase.class),
                 getBookingUseCase,
                 validateTicketUseCase,
-                eventTenantLookup);
+                eventTenantLookup,
+                mock(CancelBookingUseCase.class));
 
         assertThatThrownBy(() -> controller.validateTicket(
                 "ticket-123", "qr-hash", "CUSTOMER", "tenant-b", "EVENT_ORGANIZER"))

@@ -23,16 +23,24 @@ public class RabbitMQConfig {
     public static final String PAYMENT_FAILED_QUEUE = "payment.failed.queue";
     public static final String PAYMENT_COMPLETED_DLQ = "payment.completed.dlq";
     public static final String PAYMENT_FAILED_DLQ = "payment.failed.dlq";
+    public static final String PAYMENT_REFUNDED_DLQ = "payment.refunded.dlq";
+    public static final String PAYMENT_REFUND_FAILED_DLQ = "payment.refund.failed.dlq";
 
     public static final String BOOKING_CREATED_KEY = "booking.created";
     public static final String BOOKING_CANCELLED_KEY = "booking.cancelled";
     public static final String PAYMENT_COMPLETED_KEY = "payment.completed";
     public static final String PAYMENT_FAILED_KEY = "payment.failed";
+    public static final String PAYMENT_REFUNDED_KEY = "payment.refunded";
+    public static final String PAYMENT_REFUND_FAILED_KEY = "payment.refund.failed";
     public static final String PAYMENT_COMPLETED_DLQ_KEY = "payment.completed.dead";
     public static final String PAYMENT_FAILED_DLQ_KEY = "payment.failed.dead";
+    public static final String PAYMENT_REFUNDED_DLQ_KEY = "payment.refunded.dead";
+    public static final String PAYMENT_REFUND_FAILED_DLQ_KEY = "payment.refund.failed.dead";
 
     public static final String BOOKING_CONFIRMED_QUEUE = "booking.confirmed.queue";
     public static final String BOOKING_CONFIRMED_KEY = "booking.confirmed";
+    public static final String PAYMENT_REFUNDED_QUEUE = "payment.refunded.queue";
+    public static final String PAYMENT_REFUND_FAILED_QUEUE = "payment.refund.failed.queue";
 
     @Bean
     public TopicExchange bookingExchange() {
@@ -71,6 +79,22 @@ public class RabbitMQConfig {
     }
 
     @Bean
+    public Queue paymentRefundedQueue() {
+        return QueueBuilder.durable(PAYMENT_REFUNDED_QUEUE)
+                .deadLetterExchange(PAYMENT_DEAD_LETTER_EXCHANGE)
+                .deadLetterRoutingKey(PAYMENT_REFUNDED_DLQ_KEY)
+                .build();
+    }
+
+    @Bean
+    public Queue paymentRefundFailedQueue() {
+        return QueueBuilder.durable(PAYMENT_REFUND_FAILED_QUEUE)
+                .deadLetterExchange(PAYMENT_DEAD_LETTER_EXCHANGE)
+                .deadLetterRoutingKey(PAYMENT_REFUND_FAILED_DLQ_KEY)
+                .build();
+    }
+
+    @Bean
     public DirectExchange paymentDeadLetterExchange() {
         return new DirectExchange(PAYMENT_DEAD_LETTER_EXCHANGE);
     }
@@ -83,6 +107,16 @@ public class RabbitMQConfig {
     @Bean
     public Queue paymentFailedDlq() {
         return QueueBuilder.durable(PAYMENT_FAILED_DLQ).build();
+    }
+
+    @Bean
+    public Queue paymentRefundedDlq() {
+        return QueueBuilder.durable(PAYMENT_REFUNDED_DLQ).build();
+    }
+
+    @Bean
+    public Queue paymentRefundFailedDlq() {
+        return QueueBuilder.durable(PAYMENT_REFUND_FAILED_DLQ).build();
     }
 
     @Bean
@@ -106,6 +140,16 @@ public class RabbitMQConfig {
     }
 
     @Bean
+    public Binding paymentRefundedBinding(Queue paymentRefundedQueue, TopicExchange paymentExchange) {
+        return BindingBuilder.bind(paymentRefundedQueue).to(paymentExchange).with(PAYMENT_REFUNDED_KEY);
+    }
+
+    @Bean
+    public Binding paymentRefundFailedBinding(Queue paymentRefundFailedQueue, TopicExchange paymentExchange) {
+        return BindingBuilder.bind(paymentRefundFailedQueue).to(paymentExchange).with(PAYMENT_REFUND_FAILED_KEY);
+    }
+
+    @Bean
     public Binding paymentCompletedDlqBinding(
             Queue paymentCompletedDlq,
             DirectExchange paymentDeadLetterExchange) {
@@ -121,6 +165,24 @@ public class RabbitMQConfig {
         return BindingBuilder.bind(paymentFailedDlq)
                 .to(paymentDeadLetterExchange)
                 .with(PAYMENT_FAILED_DLQ_KEY);
+    }
+
+    @Bean
+    public Binding paymentRefundedDlqBinding(
+            Queue paymentRefundedDlq,
+            DirectExchange paymentDeadLetterExchange) {
+        return BindingBuilder.bind(paymentRefundedDlq)
+                .to(paymentDeadLetterExchange)
+                .with(PAYMENT_REFUNDED_DLQ_KEY);
+    }
+
+    @Bean
+    public Binding paymentRefundFailedDlqBinding(
+            Queue paymentRefundFailedDlq,
+            DirectExchange paymentDeadLetterExchange) {
+        return BindingBuilder.bind(paymentRefundFailedDlq)
+                .to(paymentDeadLetterExchange)
+                .with(PAYMENT_REFUND_FAILED_DLQ_KEY);
     }
 
     @Bean

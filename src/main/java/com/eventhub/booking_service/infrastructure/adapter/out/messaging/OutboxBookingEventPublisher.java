@@ -1,6 +1,7 @@
 package com.eventhub.booking_service.infrastructure.adapter.out.messaging;
 
 import com.eventhub.booking_service.domain.event.BookingConfirmedEvent;
+import com.eventhub.booking_service.domain.event.BookingCancellationRequestedEvent;
 import com.eventhub.booking_service.domain.event.BookingCreatedEvent;
 import com.eventhub.booking_service.domain.model.BookingOutboxEvent;
 import com.eventhub.booking_service.domain.model.BookingOutboxStatus;
@@ -31,6 +32,12 @@ public class OutboxBookingEventPublisher implements BookingEventPublisherPort {
     public void publishBookingConfirmed(BookingConfirmedEvent event) {
         save(event.getBookingId(), event.getClass().getSimpleName(),
                 RabbitMQConfig.BOOKING_CONFIRMED_KEY, event);
+    }
+
+    @Override
+    public void publishBookingCancellationRequested(BookingCancellationRequestedEvent event) {
+        save(event.getBookingId(), event.getClass().getSimpleName(),
+                RabbitMQConfig.BOOKING_CANCELLED_KEY, event);
     }
 
     private void save(String bookingId, String eventType, String routingKey, Object payload) {
