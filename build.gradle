@@ -37,6 +37,7 @@ dependencies {
 
 	// Integración Asíncrona Event-Driven
 	implementation 'org.springframework.boot:spring-boot-starter-amqp'
+	implementation 'org.springframework.retry:spring-retry:2.0.10'
 
 	// Testing para AMQP
 	testImplementation 'org.springframework.amqp:spring-rabbit-test'

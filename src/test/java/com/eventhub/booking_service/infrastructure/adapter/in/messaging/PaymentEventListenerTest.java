@@ -7,6 +7,8 @@ import com.eventhub.booking_service.domain.model.Ticket;
 import com.eventhub.booking_service.domain.port.out.BookingEventPublisherPort;
 import com.eventhub.booking_service.domain.port.out.BookingRepositoryPort;
 import com.eventhub.booking_service.domain.port.out.InventoryRepositoryPort;
+import com.eventhub.booking_service.infrastructure.adapter.out.persistence.SpringDataJpaPaymentInboxRepository;
+import com.eventhub.booking_service.infrastructure.adapter.out.persistence.entity.PaymentInboxEventEntity;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -20,6 +22,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.never;
 
 class PaymentEventListenerTest {
 
@@ -28,6 +31,7 @@ class PaymentEventListenerTest {
         BookingRepositoryPort bookingRepository = mock(BookingRepositoryPort.class);
         BookingEventPublisherPort eventPublisher = mock(BookingEventPublisherPort.class);
         InventoryRepositoryPort inventoryRepository = mock(InventoryRepositoryPort.class);
+        SpringDataJpaPaymentInboxRepository inboxRepository = mock(SpringDataJpaPaymentInboxRepository.class);
         Booking booking = Booking.builder()
                 .id("booking-123")
                 .eventId("event-123")
@@ -48,12 +52,13 @@ class PaymentEventListenerTest {
             return ticket;
         });
 
-        PaymentEventListener listener = new PaymentEventListener(bookingRepository, eventPublisher, inventoryRepository);
+        PaymentEventListener listener = new PaymentEventListener(
+                bookingRepository, eventPublisher, inventoryRepository, inboxRepository);
         listener.handlePaymentCompleted(Map.of(
                 "bookingId", "booking-123",
                 "transactionId", "transaction-123",
                 "currency", "COP",
-                "amount", new BigDecimal("42.50")));
+                "amount", new BigDecimal("42.50")), "evt-payment-123");
 
         verify(inventoryRepository).confirm(booking);
         ArgumentCaptor<BookingConfirmedEvent> eventCaptor = ArgumentCaptor.forClass(BookingConfirmedEvent.class);
@@ -63,6 +68,7 @@ class PaymentEventListenerTest {
         assertThat(eventCaptor.getValue().getTotalPrice()).isEqualByComparingTo("42.50");
         assertThat(eventCaptor.getValue().getSessionId()).isEqualTo("session-123");
         assertThat(eventCaptor.getValue().getTickets().getFirst().getSeatId()).isEqualTo("seat-1");
+        verify(inboxRepository).save(any(PaymentInboxEventEntity.class));
     }
 
     @Test
@@ -70,6 +76,7 @@ class PaymentEventListenerTest {
         BookingRepositoryPort bookingRepository = mock(BookingRepositoryPort.class);
         BookingEventPublisherPort eventPublisher = mock(BookingEventPublisherPort.class);
         InventoryRepositoryPort inventoryRepository = mock(InventoryRepositoryPort.class);
+        SpringDataJpaPaymentInboxRepository inboxRepository = mock(SpringDataJpaPaymentInboxRepository.class);
         Booking booking = Booking.builder()
                 .id("booking-123")
                 .eventId("event-123")
@@ -83,12 +90,13 @@ class PaymentEventListenerTest {
         when(bookingRepository.findByIdForUpdate("booking-123")).thenReturn(Optional.of(booking));
         when(bookingRepository.save(booking)).thenReturn(booking);
 
-        PaymentEventListener listener = new PaymentEventListener(bookingRepository, eventPublisher, inventoryRepository);
+        PaymentEventListener listener = new PaymentEventListener(
+                bookingRepository, eventPublisher, inventoryRepository, inboxRepository);
         listener.handlePaymentCompleted(Map.of(
                 "bookingId", "booking-123",
                 "transactionId", "transaction-late",
                 "currency", "COP",
-                "amount", new BigDecimal("42.50")));
+                "amount", new BigDecimal("42.50")), "evt-late");
 
         assertThat(booking.getStatus()).isEqualTo(BookingStatus.PAYMENT_REVIEW_REQUIRED);
         assertThat(booking.getPaymentTransactionId()).isEqualTo("transaction-late");
@@ -104,6 +112,7 @@ class PaymentEventListenerTest {
         BookingRepositoryPort bookingRepository = mock(BookingRepositoryPort.class);
         BookingEventPublisherPort eventPublisher = mock(BookingEventPublisherPort.class);
         InventoryRepositoryPort inventoryRepository = mock(InventoryRepositoryPort.class);
+        SpringDataJpaPaymentInboxRepository inboxRepository = mock(SpringDataJpaPaymentInboxRepository.class);
         Booking booking = Booking.builder()
                 .id("booking-123")
                 .eventId("event-123")
@@ -119,12 +128,13 @@ class PaymentEventListenerTest {
         when(bookingRepository.findByIdForUpdate("booking-123")).thenReturn(Optional.of(booking));
         when(bookingRepository.save(booking)).thenReturn(booking);
 
-        PaymentEventListener listener = new PaymentEventListener(bookingRepository, eventPublisher, inventoryRepository);
+        PaymentEventListener listener = new PaymentEventListener(
+                bookingRepository, eventPublisher, inventoryRepository, inboxRepository);
         listener.handlePaymentCompleted(Map.of(
                 "bookingId", "booking-123",
                 "transactionId", "transaction-wrong-amount",
                 "currency", "COP",
-                "amount", new BigDecimal("1.00")));
+                "amount", new BigDecimal("1.00")), "evt-wrong-amount");
 
         assertThat(booking.getStatus()).isEqualTo(BookingStatus.PAYMENT_REVIEW_REQUIRED);
         assertThat(booking.getInventoryHeld()).isFalse();
@@ -138,6 +148,7 @@ class PaymentEventListenerTest {
         BookingRepositoryPort bookingRepository = mock(BookingRepositoryPort.class);
         BookingEventPublisherPort eventPublisher = mock(BookingEventPublisherPort.class);
         InventoryRepositoryPort inventoryRepository = mock(InventoryRepositoryPort.class);
+        SpringDataJpaPaymentInboxRepository inboxRepository = mock(SpringDataJpaPaymentInboxRepository.class);
         Booking booking = Booking.builder()
                 .id("booking-123")
                 .eventId("event-123")
@@ -152,15 +163,36 @@ class PaymentEventListenerTest {
         when(bookingRepository.findByIdForUpdate("booking-123")).thenReturn(Optional.of(booking));
         when(bookingRepository.save(booking)).thenReturn(booking);
 
-        PaymentEventListener listener = new PaymentEventListener(bookingRepository, eventPublisher, inventoryRepository);
+        PaymentEventListener listener = new PaymentEventListener(
+                bookingRepository, eventPublisher, inventoryRepository, inboxRepository);
         listener.handlePaymentCompleted(Map.of(
                 "bookingId", "booking-123",
                 "transactionId", "transaction-usd",
                 "currency", "USD",
-                "amount", new BigDecimal("42.50")));
+                "amount", new BigDecimal("42.50")), "evt-usd");
 
         assertThat(booking.getStatus()).isEqualTo(BookingStatus.PAYMENT_REVIEW_REQUIRED);
         verify(inventoryRepository).release(booking);
         verify(bookingRepository, org.mockito.Mockito.never()).saveTicket(any(Ticket.class));
+    }
+
+    @Test
+    void ignoresPaymentEventAlreadyRecordedInInbox() {
+        BookingRepositoryPort bookingRepository = mock(BookingRepositoryPort.class);
+        BookingEventPublisherPort eventPublisher = mock(BookingEventPublisherPort.class);
+        InventoryRepositoryPort inventoryRepository = mock(InventoryRepositoryPort.class);
+        SpringDataJpaPaymentInboxRepository inboxRepository = mock(SpringDataJpaPaymentInboxRepository.class);
+        when(inboxRepository.existsById("evt-duplicate")).thenReturn(true);
+
+        PaymentEventListener listener = new PaymentEventListener(
+                bookingRepository, eventPublisher, inventoryRepository, inboxRepository);
+        listener.handlePaymentCompleted(Map.of(
+                "bookingId", "booking-123",
+                "transactionId", "transaction-123",
+                "currency", "COP",
+                "amount", new BigDecimal("42.50")), "evt-duplicate");
+
+        verify(bookingRepository, never()).findByIdForUpdate(any());
+        verify(inboxRepository, never()).save(any(PaymentInboxEventEntity.class));
     }
 }

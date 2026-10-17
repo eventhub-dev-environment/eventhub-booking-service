@@ -9,9 +9,13 @@ import com.eventhub.booking_service.domain.port.out.BookingEventPublisherPort;
 import com.eventhub.booking_service.domain.port.out.BookingRepositoryPort;
 import com.eventhub.booking_service.domain.port.out.InventoryRepositoryPort;
 import com.eventhub.booking_service.infrastructure.config.RabbitMQConfig;
+import com.eventhub.booking_service.infrastructure.adapter.out.persistence.SpringDataJpaPaymentInboxRepository;
+import com.eventhub.booking_service.infrastructure.adapter.out.persistence.entity.PaymentInboxEventEntity;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.support.AmqpHeaders;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,6 +25,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 @Slf4j
@@ -31,24 +36,37 @@ public class PaymentEventListener {
     private final BookingRepositoryPort bookingRepositoryPort;
     private final BookingEventPublisherPort eventPublisherPort;
     private final InventoryRepositoryPort inventoryRepositoryPort;
+    private final SpringDataJpaPaymentInboxRepository paymentInboxRepository;
     @Value("${payment.currency:COP}")
     private String paymentCurrency = "COP";
 
     @RabbitListener(queues = RabbitMQConfig.PAYMENT_COMPLETED_QUEUE)
     @Transactional
-    public void handlePaymentCompleted(Map<String, Object> event) {
+    public void handlePaymentCompleted(
+            Map<String, Object> event,
+            @Header(name = AmqpHeaders.MESSAGE_ID, required = false) String messageId) {
         String bookingId = (String) event.get("bookingId");
         String transactionId = (String) event.get("transactionId");
+        String eventId = resolveEventId(messageId, "payment.completed", bookingId, transactionId);
+        if (paymentInboxRepository.existsById(eventId)) {
+            log.info("Se ignora evento de pago ya procesado: {}", eventId);
+            return;
+        }
         BigDecimal paymentAmount = parseAmount(event.get("amount"));
         if (bookingId == null || bookingId.isBlank() || transactionId == null || transactionId.isBlank()
                 || paymentAmount == null) {
             log.error("Evento de pago aprobado inválido: faltan bookingId, transactionId o amount");
-            return;
+            throw new IllegalArgumentException("Evento de pago aprobado inválido");
         }
 
         log.info("Evento de pago completado recibido para bookingId: {}, transactionId: {}", bookingId, transactionId);
 
-        bookingRepositoryPort.findByIdForUpdate(bookingId).ifPresentOrElse(booking -> {
+        Optional<Booking> bookingResult = bookingRepositoryPort.findByIdForUpdate(bookingId);
+        if (bookingResult.isEmpty()) {
+            log.error("Se recibió un pago aprobado para una reserva inexistente: {}", bookingId);
+            throw new IllegalStateException("La reserva asociada al pago no existe");
+        }
+        bookingResult.ifPresent(booking -> {
             if (booking.getStatus() == BookingStatus.CONFIRMED
                     || booking.getStatus() == BookingStatus.PAYMENT_REVIEW_REQUIRED) {
                 log.info("El pago de la reserva {} ya fue procesado; se ignora la entrega repetida", bookingId);
@@ -125,7 +143,23 @@ public class PaymentEventListener {
 
             eventPublisherPort.publishBookingConfirmed(confirmedEvent);
             log.info("Reserva {} confirmada exitosamente, tickets emitidos y evento de confirmación publicado.", bookingId);
-        }, () -> log.error("Se recibió un pago aprobado para una reserva inexistente: {}", bookingId));
+        });
+        saveInboxEvent(eventId, "payment.completed");
+    }
+
+    private void saveInboxEvent(String eventId, String eventType) {
+        paymentInboxRepository.save(PaymentInboxEventEntity.builder()
+                .eventId(eventId)
+                .eventType(eventType)
+                .processedAt(LocalDateTime.now())
+                .build());
+    }
+
+    private String resolveEventId(String messageId, String eventType, String bookingId, String transactionId) {
+        if (messageId != null && !messageId.isBlank()) {
+            return messageId;
+        }
+        return "legacy:" + eventType + ":" + bookingId + ":" + transactionId;
     }
 
     private BigDecimal parseAmount(Object amount) {

@@ -1,7 +1,11 @@
 package com.eventhub.booking_service.infrastructure.config;
 
 import org.springframework.amqp.core.*;
-import org.springframework.amqp.support.converter.JacksonJsonMessageConverter; // Nuevo import en Spring 4
+import org.springframework.amqp.rabbit.config.RetryInterceptorBuilder;
+import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
+import org.springframework.amqp.rabbit.connection.ConnectionFactory;
+import org.springframework.amqp.rabbit.retry.RejectAndDontRequeueRecoverer;
+import org.springframework.amqp.support.converter.JacksonJsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -11,16 +15,21 @@ public class RabbitMQConfig {
 
     public static final String BOOKING_EXCHANGE = "booking.exchange";
     public static final String PAYMENT_EXCHANGE = "payment.exchange";
+    public static final String PAYMENT_DEAD_LETTER_EXCHANGE = "booking.payment.dlx";
 
     public static final String BOOKING_CREATED_QUEUE = "booking.created.queue";
     public static final String BOOKING_CANCELLED_QUEUE = "booking.cancelled.queue";
     public static final String PAYMENT_COMPLETED_QUEUE = "payment.completed.queue";
     public static final String PAYMENT_FAILED_QUEUE = "payment.failed.queue";
+    public static final String PAYMENT_COMPLETED_DLQ = "payment.completed.dlq";
+    public static final String PAYMENT_FAILED_DLQ = "payment.failed.dlq";
 
     public static final String BOOKING_CREATED_KEY = "booking.created";
     public static final String BOOKING_CANCELLED_KEY = "booking.cancelled";
     public static final String PAYMENT_COMPLETED_KEY = "payment.completed";
     public static final String PAYMENT_FAILED_KEY = "payment.failed";
+    public static final String PAYMENT_COMPLETED_DLQ_KEY = "payment.completed.dead";
+    public static final String PAYMENT_FAILED_DLQ_KEY = "payment.failed.dead";
 
     public static final String BOOKING_CONFIRMED_QUEUE = "booking.confirmed.queue";
     public static final String BOOKING_CONFIRMED_KEY = "booking.confirmed";
@@ -47,12 +56,33 @@ public class RabbitMQConfig {
 
     @Bean
     public Queue paymentCompletedQueue() {
-        return QueueBuilder.durable(PAYMENT_COMPLETED_QUEUE).build();
+        return QueueBuilder.durable(PAYMENT_COMPLETED_QUEUE)
+                .deadLetterExchange(PAYMENT_DEAD_LETTER_EXCHANGE)
+                .deadLetterRoutingKey(PAYMENT_COMPLETED_DLQ_KEY)
+                .build();
     }
 
     @Bean
     public Queue paymentFailedQueue() {
-        return QueueBuilder.durable(PAYMENT_FAILED_QUEUE).build();
+        return QueueBuilder.durable(PAYMENT_FAILED_QUEUE)
+                .deadLetterExchange(PAYMENT_DEAD_LETTER_EXCHANGE)
+                .deadLetterRoutingKey(PAYMENT_FAILED_DLQ_KEY)
+                .build();
+    }
+
+    @Bean
+    public DirectExchange paymentDeadLetterExchange() {
+        return new DirectExchange(PAYMENT_DEAD_LETTER_EXCHANGE);
+    }
+
+    @Bean
+    public Queue paymentCompletedDlq() {
+        return QueueBuilder.durable(PAYMENT_COMPLETED_DLQ).build();
+    }
+
+    @Bean
+    public Queue paymentFailedDlq() {
+        return QueueBuilder.durable(PAYMENT_FAILED_DLQ).build();
     }
 
     @Bean
@@ -76,6 +106,24 @@ public class RabbitMQConfig {
     }
 
     @Bean
+    public Binding paymentCompletedDlqBinding(
+            Queue paymentCompletedDlq,
+            DirectExchange paymentDeadLetterExchange) {
+        return BindingBuilder.bind(paymentCompletedDlq)
+                .to(paymentDeadLetterExchange)
+                .with(PAYMENT_COMPLETED_DLQ_KEY);
+    }
+
+    @Bean
+    public Binding paymentFailedDlqBinding(
+            Queue paymentFailedDlq,
+            DirectExchange paymentDeadLetterExchange) {
+        return BindingBuilder.bind(paymentFailedDlq)
+                .to(paymentDeadLetterExchange)
+                .with(PAYMENT_FAILED_DLQ_KEY);
+    }
+
+    @Bean
     public Queue bookingConfirmedQueue() {
         return QueueBuilder.durable(BOOKING_CONFIRMED_QUEUE).build();
     }
@@ -89,5 +137,20 @@ public class RabbitMQConfig {
     @Bean
     public MessageConverter jsonMessageConverter() {
         return new JacksonJsonMessageConverter();
+    }
+
+    @Bean
+    public SimpleRabbitListenerContainerFactory rabbitListenerContainerFactory(
+            ConnectionFactory connectionFactory,
+            MessageConverter jsonMessageConverter) {
+        SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
+        factory.setConnectionFactory(connectionFactory);
+        factory.setMessageConverter(jsonMessageConverter);
+        factory.setAdviceChain(RetryInterceptorBuilder.stateless()
+                .maxRetries(3)
+                .backOffOptions(1000, 2.0, 10_000)
+                .recoverer(new RejectAndDontRequeueRecoverer())
+                .build());
+        return factory;
     }
 }
