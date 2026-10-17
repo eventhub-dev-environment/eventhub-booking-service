@@ -52,6 +52,7 @@ class PaymentEventListenerTest {
         listener.handlePaymentCompleted(Map.of(
                 "bookingId", "booking-123",
                 "transactionId", "transaction-123",
+                "currency", "COP",
                 "amount", new BigDecimal("42.50")));
 
         verify(inventoryRepository).confirm(booking);
@@ -86,6 +87,7 @@ class PaymentEventListenerTest {
         listener.handlePaymentCompleted(Map.of(
                 "bookingId", "booking-123",
                 "transactionId", "transaction-late",
+                "currency", "COP",
                 "amount", new BigDecimal("42.50")));
 
         assertThat(booking.getStatus()).isEqualTo(BookingStatus.PAYMENT_REVIEW_REQUIRED);
@@ -121,6 +123,7 @@ class PaymentEventListenerTest {
         listener.handlePaymentCompleted(Map.of(
                 "bookingId", "booking-123",
                 "transactionId", "transaction-wrong-amount",
+                "currency", "COP",
                 "amount", new BigDecimal("1.00")));
 
         assertThat(booking.getStatus()).isEqualTo(BookingStatus.PAYMENT_REVIEW_REQUIRED);
@@ -128,5 +131,36 @@ class PaymentEventListenerTest {
         verify(inventoryRepository).release(booking);
         verify(bookingRepository, org.mockito.Mockito.never()).saveTicket(any(Ticket.class));
         verify(eventPublisher, org.mockito.Mockito.never()).publishBookingConfirmed(any());
+    }
+
+    @Test
+    void sendsUnexpectedCurrencyPaymentToManualReview() {
+        BookingRepositoryPort bookingRepository = mock(BookingRepositoryPort.class);
+        BookingEventPublisherPort eventPublisher = mock(BookingEventPublisherPort.class);
+        InventoryRepositoryPort inventoryRepository = mock(InventoryRepositoryPort.class);
+        Booking booking = Booking.builder()
+                .id("booking-123")
+                .eventId("event-123")
+                .sessionId("session-123")
+                .ticketTierId("tier-123")
+                .quantity(1)
+                .totalPrice(new BigDecimal("42.50"))
+                .status(BookingStatus.PENDING_PAYMENT)
+                .inventoryHeld(true)
+                .expiresAt(java.time.LocalDateTime.now().plusMinutes(10))
+                .build();
+        when(bookingRepository.findByIdForUpdate("booking-123")).thenReturn(Optional.of(booking));
+        when(bookingRepository.save(booking)).thenReturn(booking);
+
+        PaymentEventListener listener = new PaymentEventListener(bookingRepository, eventPublisher, inventoryRepository);
+        listener.handlePaymentCompleted(Map.of(
+                "bookingId", "booking-123",
+                "transactionId", "transaction-usd",
+                "currency", "USD",
+                "amount", new BigDecimal("42.50")));
+
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.PAYMENT_REVIEW_REQUIRED);
+        verify(inventoryRepository).release(booking);
+        verify(bookingRepository, org.mockito.Mockito.never()).saveTicket(any(Ticket.class));
     }
 }

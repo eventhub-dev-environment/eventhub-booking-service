@@ -14,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -30,6 +31,8 @@ public class PaymentEventListener {
     private final BookingRepositoryPort bookingRepositoryPort;
     private final BookingEventPublisherPort eventPublisherPort;
     private final InventoryRepositoryPort inventoryRepositoryPort;
+    @Value("${payment.currency:COP}")
+    private String paymentCurrency = "COP";
 
     @RabbitListener(queues = RabbitMQConfig.PAYMENT_COMPLETED_QUEUE)
     @Transactional
@@ -55,11 +58,12 @@ public class PaymentEventListener {
             LocalDateTime now = LocalDateTime.now();
             boolean paymentMatches = booking.getTotalPrice() != null
                     && booking.getTotalPrice().compareTo(paymentAmount) == 0;
+            boolean currencyMatches = paymentCurrency.equals(event.get("currency"));
             boolean reservationIsLive = booking.getStatus() == BookingStatus.PENDING_PAYMENT
                     && booking.getExpiresAt() != null
                     && Boolean.TRUE.equals(booking.getInventoryHeld())
                     && booking.getExpiresAt().isAfter(now);
-            if (!paymentMatches || !reservationIsLive) {
+            if (!paymentMatches || !currencyMatches || !reservationIsLive) {
                 if (booking.getStatus() == BookingStatus.PENDING_PAYMENT
                         && Boolean.TRUE.equals(booking.getInventoryHeld())) {
                     inventoryRepositoryPort.release(booking);
@@ -70,8 +74,8 @@ public class PaymentEventListener {
                 booking.setUpdatedAt(now);
                 bookingRepositoryPort.save(booking);
                 log.error(
-                        "Pago aprobado requiere revisión manual; bookingId={}, transactionId={}, amountMatches={}, reservationLive={}",
-                        bookingId, transactionId, paymentMatches, reservationIsLive);
+                        "Pago aprobado requiere revisión manual; bookingId={}, transactionId={}, amountMatches={}, currencyMatches={}, reservationLive={}",
+                        bookingId, transactionId, paymentMatches, currencyMatches, reservationIsLive);
                 return;
             }
 
