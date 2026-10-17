@@ -6,9 +6,11 @@ import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
-@Table(name = "bookings")
+@Table(name = "bookings", indexes = @Index(name = "idx_booking_pending_expiry", columnList = "status, expires_at"))
 @Getter
 @Setter
 @Builder
@@ -22,6 +24,8 @@ public class BookingEntity {
 
     @Column(nullable = false)
     private String eventId;
+
+    private String sessionId;
 
     @Column(nullable = false)
     private String ticketTierId;
@@ -42,9 +46,30 @@ public class BookingEntity {
     private BookingStatus status;
 
     private LocalDateTime expiresAt;
+    private String paymentTransactionId;
+    private java.time.LocalDateTime refundCutoffAt;
+    private Boolean inventoryHeld;
 
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
+
+    @ElementCollection
+    @CollectionTable(
+            name = "booking_attendee_data",
+            joinColumns = @JoinColumn(name = "booking_id"),
+            uniqueConstraints = @UniqueConstraint(columnNames = {"booking_id", "attendee_index", "field_key"}))
+    @Builder.Default
+    private List<BookingAttendeeDataField> attendeeData = new ArrayList<>();
+
+    @ElementCollection
+    @CollectionTable(
+            name = "booking_seats",
+            joinColumns = @JoinColumn(name = "booking_id"),
+            uniqueConstraints = @UniqueConstraint(columnNames = {"booking_id", "seat_id"}))
+    @Column(name = "seat_id", nullable = false)
+    @OrderColumn(name = "seat_index")
+    @Builder.Default
+    private List<String> seatIds = new ArrayList<>();
 }

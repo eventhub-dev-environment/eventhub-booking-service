@@ -1,5 +1,7 @@
 package com.eventhub.booking_service.infrastructure.adapter.in.web.exception;
 
+import com.eventhub.booking_service.domain.exception.InventoryConfigurationConflictException;
+import com.eventhub.booking_service.domain.exception.InventoryUnavailableException;
 import com.eventhub.booking_service.infrastructure.adapter.in.web.dto.ApiResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -7,12 +9,32 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.HashMap;
 import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<ApiResponse<Void>> handleResponseStatusException(ResponseStatusException ex) {
+        ApiResponse<Void> response = ApiResponse.error(ex.getReason(), null);
+        return ResponseEntity.status(ex.getStatusCode()).body(response);
+    }
+
+    @ExceptionHandler(InventoryUnavailableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInventoryUnavailable(InventoryUnavailableException ex) {
+        ApiResponse<Void> response = ApiResponse.error(ex.getMessage(), null);
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+    }
+
+    @ExceptionHandler(InventoryConfigurationConflictException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInventoryConfigurationConflict(
+            InventoryConfigurationConflictException ex) {
+        ApiResponse<Void> response = ApiResponse.error(ex.getMessage(), null);
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+    }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> handleValidationExceptions(MethodArgumentNotValidException ex) {

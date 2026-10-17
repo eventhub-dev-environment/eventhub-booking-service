@@ -15,6 +15,7 @@ import java.time.LocalDateTime;
 public class BookingCreatedEvent {
     private String bookingId;
     private String eventId;
+    private String sessionId;
     private String ticketTierId;
     private String userId;
     private Integer quantity;

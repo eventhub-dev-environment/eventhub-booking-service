@@ -25,8 +25,12 @@ public class TicketEntity {
     @Column(nullable = false)
     private String eventId;
 
+    private String sessionId;
+
     @Column(nullable = false)
     private String ticketTierId;
+
+    private String seatId;
 
     private String qrCodeHash;
 

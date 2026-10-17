@@ -6,15 +6,34 @@ spring:
     name: booking_service
   profiles:
     active: dev
+  http:
+    converters:
+      preferred-json-mapper: jackson2
+  flyway:
+    baseline-on-migrate: false
+    baseline-version: 1
+  jpa:
+    hibernate:
+      ddl-auto: validate
   rabbitmq:
     host: ${SPRING_RABBITMQ_HOST:localhost}
     port: 5672
     username: ${RABBITMQ_USER:guest}
     password: ${RABBITMQ_PASS:guest}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
 
 gateway:
   internal-secret: ${GATEWAY_INTERNAL_SECRET}
 
+payment:
+  currency: COP
+
+booking:
+  cancellation:
+    refund-cutoff-hours: 24
 
 management:
   endpoints:
