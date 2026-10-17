@@ -1,11 +1,9 @@
 package com.eventhub.booking_service.infrastructure.adapter.in.web;
 
 import com.eventhub.booking_service.domain.model.BookingInventoryDefinition;
+import com.eventhub.booking_service.domain.model.BookingRegistrationField;
 import com.eventhub.booking_service.domain.model.InventoryMode;
 import com.eventhub.booking_service.domain.model.InventorySeatDefinition;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -13,12 +11,17 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.server.ResponseStatusException;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Component
 public class EventTenantLookup {
@@ -52,7 +55,7 @@ public class EventTenantLookup {
         EventDefinition event;
         try {
             event = objectMapper.treeToValue(eventNode, EventDefinition.class);
-        } catch (JsonProcessingException exception) {
+        } catch (JacksonException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Event Service devolvió una configuración inválida");
         }
 
@@ -92,6 +95,7 @@ public class EventTenantLookup {
         if (tiers == null) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Event Service no devolvió tarifas");
         }
+        List<BookingRegistrationField> registrationFields = mapRegistrationFields(event.registrationFields());
         TicketTierDefinition tier = tiers.stream()
                 .filter(candidate -> candidate != null)
                 .filter(candidate -> ticketTierId.equals(candidate.id()))
@@ -113,7 +117,52 @@ public class EventTenantLookup {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Event Service devolvió una tarifa inválida");
         }
         return new BookingInventoryDefinition(
-                event.id(), sessionId, tier.id(), tier.price(), inventoryMode, tier.capacity(), seats, eventStartsAt);
+                event.id(), sessionId, tier.id(), tier.price(), inventoryMode, tier.capacity(), seats, eventStartsAt,
+                registrationFields);
+    }
+
+    private List<BookingRegistrationField> mapRegistrationFields(List<EventRegistrationField> fields) {
+        if (fields == null) {
+            return List.of();
+        }
+        Set<String> keys = new HashSet<>();
+        return fields.stream()
+                .map(field -> {
+                    if (field == null || field.key() == null || field.key().isBlank()
+                            || !keys.add(field.key()) || field.label() == null || field.label().isBlank()
+                            || field.type() == null || field.required() == null
+                            || !Set.of("TEXT", "NUMBER", "ENUM", "BOOLEAN").contains(field.type())) {
+                        throw new ResponseStatusException(
+                                HttpStatus.BAD_GATEWAY, "Event Service devolvió requisitos de registro inválidos");
+                    }
+                    List<EventRegistrationFieldOption> options = field.options();
+                    if ("ENUM".equals(field.type())) {
+                        if (options == null || options.isEmpty()) {
+                            throw new ResponseStatusException(
+                                    HttpStatus.BAD_GATEWAY, "Event Service devolvió opciones de registro inválidas");
+                        }
+                        Set<String> optionValues = new HashSet<>();
+                        for (EventRegistrationFieldOption option : options) {
+                            if (option == null || option.label() == null || option.label().isBlank()
+                                    || option.value() == null || option.value().isBlank()
+                                    || !optionValues.add(option.value())) {
+                                throw new ResponseStatusException(
+                                        HttpStatus.BAD_GATEWAY, "Event Service devolvió opciones de registro inválidas");
+                            }
+                        }
+                    } else if (options != null && !options.isEmpty()) {
+                        throw new ResponseStatusException(
+                                HttpStatus.BAD_GATEWAY, "Event Service devolvió opciones de registro inválidas");
+                    }
+                    return new BookingRegistrationField(
+                            field.key(),
+                            field.type(),
+                            field.required(),
+                            options == null ? List.of() : options.stream()
+                                    .map(EventRegistrationFieldOption::value)
+                                    .toList());
+                })
+                .toList();
     }
 
     private JsonNode fetchEvent(String eventId) {
@@ -147,7 +196,8 @@ public class EventTenantLookup {
             String status,
             LocalDateTime eventDate,
             List<TicketTierDefinition> ticketTiers,
-            List<SessionDefinition> sessions) {
+            List<SessionDefinition> sessions,
+            List<EventRegistrationField> registrationFields) {
     }
 
     private record SessionDefinition(
@@ -170,5 +220,16 @@ public class EventTenantLookup {
             String row,
             String number,
             boolean accessible) {
+    }
+
+    private record EventRegistrationField(
+            String key,
+            String label,
+            String type,
+            Boolean required,
+            List<EventRegistrationFieldOption> options) {
+    }
+
+    private record EventRegistrationFieldOption(String label, String value) {
     }
 }

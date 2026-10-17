@@ -2,6 +2,7 @@ package com.eventhub.booking_service.infrastructure.adapter.in.web;
 
 import com.eventhub.booking_service.domain.model.Booking;
 import com.eventhub.booking_service.domain.model.BookingInventoryDefinition;
+import com.eventhub.booking_service.domain.model.BookingRegistrationField;
 import com.eventhub.booking_service.domain.model.Ticket;
 import com.eventhub.booking_service.domain.port.in.CancelBookingUseCase;
 import com.eventhub.booking_service.domain.port.in.CreateBookingUseCase;
@@ -16,9 +17,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.Arrays;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -44,9 +45,10 @@ public class BookingController {
         if (!parseRoles(userRoles).contains("CUSTOMER")) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Se requiere el rol CUSTOMER");
         }
-        validateAttendeeData(request.getAttendeeData(), request.getQuantity());
+        validateAttendeeDataStructure(request.getAttendeeData(), request.getQuantity());
         BookingInventoryDefinition inventoryDefinition = eventTenantLookup.findBookingInventory(
                 request.getEventId(), request.getSessionId(), request.getTicketTierId());
+        validateAttendeeData(request.getAttendeeData(), request.getQuantity(), inventoryDefinition.registrationFields());
         BigDecimal expectedTotal = inventoryDefinition.unitPrice()
                 .multiply(BigDecimal.valueOf(request.getQuantity()))
                 .setScale(2, RoundingMode.HALF_UP);
@@ -166,7 +168,7 @@ public class BookingController {
                 .collect(Collectors.toSet());
     }
 
-    private void validateAttendeeData(List<Map<String, String>> attendeeData, Integer quantity) {
+    private void validateAttendeeDataStructure(List<Map<String, String>> attendeeData, Integer quantity) {
         if (attendeeData == null || attendeeData.isEmpty()) {
             return;
         }
@@ -178,5 +180,71 @@ public class BookingController {
                     HttpStatus.BAD_REQUEST,
                     "Los datos de registro deben incluir un mapa válido por cada entrada.");
         }
+    }
+
+    private void validateAttendeeData(
+            List<Map<String, String>> attendeeData,
+            Integer quantity,
+            List<BookingRegistrationField> registrationFields) {
+        if (registrationFields == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_GATEWAY, "Event Service devolvió requisitos de registro inválidos");
+        }
+        if (attendeeData == null || attendeeData.isEmpty()) {
+            if (registrationFields.stream().anyMatch(BookingRegistrationField::required)) {
+                throw invalidAttendeeData("Debe completar los campos obligatorios para cada entrada.");
+            }
+            return;
+        }
+        if (quantity == null || attendeeData.size() != quantity
+                || attendeeData.stream().anyMatch(fields -> fields == null
+                    || fields.keySet().stream().anyMatch(key -> key == null || key.isBlank())
+                    || fields.values().stream().anyMatch(value -> value == null))) {
+            throw invalidAttendeeData("Los datos de registro deben incluir un mapa válido por cada entrada.");
+        }
+
+        Set<String> knownKeys = registrationFields.stream()
+                .map(BookingRegistrationField::key)
+                .collect(Collectors.toSet());
+        for (Map<String, String> attendee : attendeeData) {
+            if (!knownKeys.containsAll(attendee.keySet())) {
+                throw invalidAttendeeData("Se incluyó un campo de registro no definido para el evento.");
+            }
+            for (BookingRegistrationField field : registrationFields) {
+                String value = attendee.get(field.key());
+                if (value == null || value.isBlank()) {
+                    if (field.required()) {
+                        throw invalidAttendeeData("Debe completar los campos obligatorios para cada entrada.");
+                    }
+                    continue;
+                }
+                if (!isValidRegistrationValue(field, value)) {
+                    throw invalidAttendeeData("Uno o más valores de registro no cumplen la configuración del evento.");
+                }
+            }
+        }
+    }
+
+    private boolean isValidRegistrationValue(BookingRegistrationField field, String value) {
+        return switch (field.type()) {
+            case "TEXT" -> true;
+            case "NUMBER" -> isNumber(value);
+            case "ENUM" -> field.allowedValues() != null && field.allowedValues().contains(value);
+            case "BOOLEAN" -> "true".equalsIgnoreCase(value) || "false".equalsIgnoreCase(value);
+            default -> false;
+        };
+    }
+
+    private boolean isNumber(String value) {
+        try {
+            new BigDecimal(value);
+            return true;
+        } catch (NumberFormatException exception) {
+            return false;
+        }
+    }
+
+    private ResponseStatusException invalidAttendeeData(String message) {
+        return new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
     }
 }

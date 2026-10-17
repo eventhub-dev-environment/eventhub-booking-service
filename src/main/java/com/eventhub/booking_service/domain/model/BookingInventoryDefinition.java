@@ -12,5 +12,6 @@ public record BookingInventoryDefinition(
         InventoryMode inventoryMode,
         Integer capacity,
         List<InventorySeatDefinition> seats,
-        LocalDateTime eventStartsAt) {
+        LocalDateTime eventStartsAt,
+        List<BookingRegistrationField> registrationFields) {
 }

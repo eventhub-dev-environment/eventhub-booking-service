@@ -2,6 +2,7 @@ package com.eventhub.booking_service.infrastructure.adapter.in.web;
 
 import com.eventhub.booking_service.domain.model.Booking;
 import com.eventhub.booking_service.domain.model.BookingInventoryDefinition;
+import com.eventhub.booking_service.domain.model.BookingRegistrationField;
 import com.eventhub.booking_service.domain.model.InventoryMode;
 import com.eventhub.booking_service.domain.model.Ticket;
 import com.eventhub.booking_service.domain.port.in.CreateBookingUseCase;
@@ -20,6 +21,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -39,7 +41,8 @@ class BookingControllerTest {
         when(eventTenantLookup.findBookingInventory("event-123", "session-123", "tier-123"))
                 .thenReturn(new BookingInventoryDefinition(
                         "event-123", "session-123", "tier-123", new BigDecimal("10.00"),
-                        InventoryMode.GENERAL_ADMISSION, 100, List.of(), null));
+                        InventoryMode.GENERAL_ADMISSION, 100, List.of(), null,
+                        List.of(new BookingRegistrationField("shirtSize", "ENUM", true, List.of("M", "S")))));
         BookingController controller = new BookingController(
                 createBookingUseCase,
                 mock(GetBookingUseCase.class),
@@ -161,12 +164,152 @@ class BookingControllerTest {
     }
 
     @Test
+    void validatesRequiredFieldsForEveryAttendee() {
+        EventTenantLookup eventTenantLookup = mock(EventTenantLookup.class);
+        when(eventTenantLookup.findBookingInventory("event-123", null, "tier-123"))
+                .thenReturn(definitionWithFields(List.of(
+                        new BookingRegistrationField("fullName", "TEXT", true, List.of()))));
+        CreateBookingUseCase createBookingUseCase = mock(CreateBookingUseCase.class);
+        BookingController controller = new BookingController(
+                createBookingUseCase,
+                mock(GetBookingUseCase.class),
+                mock(ValidateTicketUseCase.class),
+                eventTenantLookup,
+                mock(CancelBookingUseCase.class));
+        CreateBookingRequest request = bookingRequest(2);
+        request.setAttendeeData(List.of(
+                Map.of("fullName", "Ada Lovelace"),
+                Map.of()));
+
+        assertThatThrownBy(() -> controller.createBooking(
+                request, "user-123", "buyer@example.com", "CUSTOMER"))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(exception -> ((ResponseStatusException) exception).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+        verify(createBookingUseCase, never()).createBooking(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void requiresAttendeeDataWhenEventFieldsAreRequired() {
+        EventTenantLookup eventTenantLookup = mock(EventTenantLookup.class);
+        when(eventTenantLookup.findBookingInventory("event-123", null, "tier-123"))
+                .thenReturn(definitionWithFields(List.of(
+                        new BookingRegistrationField("fullName", "TEXT", true, List.of()))));
+        BookingController controller = new BookingController(
+                mock(CreateBookingUseCase.class),
+                mock(GetBookingUseCase.class),
+                mock(ValidateTicketUseCase.class),
+                eventTenantLookup,
+                mock(CancelBookingUseCase.class));
+
+        assertThatThrownBy(() -> controller.createBooking(
+                bookingRequest(1), "user-123", "buyer@example.com", "CUSTOMER"))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(exception -> ((ResponseStatusException) exception).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void rejectsUnknownRegistrationFields() {
+        EventTenantLookup eventTenantLookup = mock(EventTenantLookup.class);
+        when(eventTenantLookup.findBookingInventory("event-123", null, "tier-123"))
+                .thenReturn(definitionWithFields(List.of(
+                        new BookingRegistrationField("fullName", "TEXT", false, List.of()))));
+        BookingController controller = new BookingController(
+                mock(CreateBookingUseCase.class),
+                mock(GetBookingUseCase.class),
+                mock(ValidateTicketUseCase.class),
+                eventTenantLookup,
+                mock(CancelBookingUseCase.class));
+        CreateBookingRequest request = bookingRequest(1);
+        request.setAttendeeData(List.of(Map.of("unconfiguredField", "value")));
+
+        assertThatThrownBy(() -> controller.createBooking(
+                request, "user-123", "buyer@example.com", "CUSTOMER"))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(exception -> ((ResponseStatusException) exception).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void validatesRegistrationValuesUsingConfiguredTypes() {
+        EventTenantLookup eventTenantLookup = mock(EventTenantLookup.class);
+        when(eventTenantLookup.findBookingInventory("event-123", null, "tier-123"))
+                .thenReturn(definitionWithFields(List.of(
+                        new BookingRegistrationField("fullName", "TEXT", true, List.of()),
+                        new BookingRegistrationField("age", "NUMBER", true, List.of()),
+                        new BookingRegistrationField("hasDietaryNeeds", "BOOLEAN", true, List.of()),
+                        new BookingRegistrationField("shirtSize", "ENUM", true, List.of("S", "M")))));
+        BookingController controller = new BookingController(
+                mock(CreateBookingUseCase.class),
+                mock(GetBookingUseCase.class),
+                mock(ValidateTicketUseCase.class),
+                eventTenantLookup,
+                mock(CancelBookingUseCase.class));
+        CreateBookingRequest request = bookingRequest(1);
+        request.setAttendeeData(List.of(Map.of(
+                "fullName", "Ada Lovelace",
+                "age", "36",
+                "hasDietaryNeeds", "false",
+                "shirtSize", "M")));
+
+        assertThatCode(() -> controller.createBooking(
+                request, "user-123", "buyer@example.com", "CUSTOMER"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void rejectsValuesThatDoNotMatchConfiguredTypes() {
+        EventTenantLookup eventTenantLookup = mock(EventTenantLookup.class);
+        when(eventTenantLookup.findBookingInventory("event-123", null, "tier-123"))
+                .thenReturn(definitionWithFields(List.of(
+                        new BookingRegistrationField("age", "NUMBER", true, List.of()))));
+        BookingController controller = new BookingController(
+                mock(CreateBookingUseCase.class),
+                mock(GetBookingUseCase.class),
+                mock(ValidateTicketUseCase.class),
+                eventTenantLookup,
+                mock(CancelBookingUseCase.class));
+        CreateBookingRequest request = bookingRequest(1);
+        request.setAttendeeData(List.of(Map.of("age", "not-a-number")));
+
+        assertThatThrownBy(() -> controller.createBooking(
+                request, "user-123", "buyer@example.com", "CUSTOMER"))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(exception -> ((ResponseStatusException) exception).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void rejectsEnumValuesOutsideConfiguredOptions() {
+        EventTenantLookup eventTenantLookup = mock(EventTenantLookup.class);
+        when(eventTenantLookup.findBookingInventory("event-123", null, "tier-123"))
+                .thenReturn(definitionWithFields(List.of(
+                        new BookingRegistrationField("shirtSize", "ENUM", true, List.of("S", "M")))));
+        BookingController controller = new BookingController(
+                mock(CreateBookingUseCase.class),
+                mock(GetBookingUseCase.class),
+                mock(ValidateTicketUseCase.class),
+                eventTenantLookup,
+                mock(CancelBookingUseCase.class));
+        CreateBookingRequest request = bookingRequest(1);
+        request.setAttendeeData(List.of(Map.of("shirtSize", "XL")));
+
+        assertThatThrownBy(() -> controller.createBooking(
+                request, "user-123", "buyer@example.com", "CUSTOMER"))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(exception -> ((ResponseStatusException) exception).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
     void rejectsClientPriceThatDoesNotMatchPublishedTierPrice() {
         EventTenantLookup eventTenantLookup = mock(EventTenantLookup.class);
         when(eventTenantLookup.findBookingInventory("event-123", null, "tier-123"))
                 .thenReturn(new BookingInventoryDefinition(
                         "event-123", "event-123", "tier-123", new BigDecimal("10.00"),
-                        InventoryMode.GENERAL_ADMISSION, 100, List.of(), null));
+                        InventoryMode.GENERAL_ADMISSION, 100, List.of(), null, List.of()));
         CreateBookingUseCase createBookingUseCase = mock(CreateBookingUseCase.class);
         BookingController controller = new BookingController(
                 createBookingUseCase,
@@ -212,5 +355,20 @@ class BookingControllerTest {
                 .extracting(exception -> ((ResponseStatusException) exception).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);
         verify(validateTicketUseCase, never()).validateAndUseTicket("ticket-123", "qr-hash");
+    }
+
+    private BookingInventoryDefinition definitionWithFields(List<BookingRegistrationField> fields) {
+        return new BookingInventoryDefinition(
+                "event-123", "event-123", "tier-123", new BigDecimal("10.00"),
+                InventoryMode.GENERAL_ADMISSION, 100, List.of(), null, fields);
+    }
+
+    private CreateBookingRequest bookingRequest(int quantity) {
+        CreateBookingRequest request = new CreateBookingRequest();
+        request.setEventId("event-123");
+        request.setTicketTierId("tier-123");
+        request.setQuantity(quantity);
+        request.setTotalPrice(BigDecimal.TEN.multiply(BigDecimal.valueOf(quantity)));
+        return request;
     }
 }

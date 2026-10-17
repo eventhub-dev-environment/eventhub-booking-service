@@ -121,7 +121,7 @@ class InventoryJpaAdapterTest {
                 "event-1", "session-1", "tier-1", BigDecimal.TEN,
                 InventoryMode.RESERVED_SEATING, 2, List.of(
                         new InventorySeatDefinition("seat-a", "A", "1", "1", false),
-                        new InventorySeatDefinition("seat-b", "A", "1", "2", false)), null);
+                        new InventorySeatDefinition("seat-b", "A", "1", "2", false)), null, List.of());
 
         adapter.hold(booking, definition);
 
@@ -135,6 +135,6 @@ class InventoryJpaAdapterTest {
     private BookingInventoryDefinition generalAdmissionDefinition() {
         return new BookingInventoryDefinition(
                 "event-1", "session-1", "tier-1", BigDecimal.TEN,
-                InventoryMode.GENERAL_ADMISSION, 20, List.of(), null);
+                InventoryMode.GENERAL_ADMISSION, 20, List.of(), null, List.of());
     }
 }

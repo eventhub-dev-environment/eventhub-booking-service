@@ -53,7 +53,8 @@ class BookingServiceTest {
                 InventoryMode.GENERAL_ADMISSION,
                 10,
                 List.of(),
-                java.time.LocalDateTime.now().plusDays(30));
+                java.time.LocalDateTime.now().plusDays(30),
+                List.of());
 
         Booking created = service.createBooking(booking, definition);
 
